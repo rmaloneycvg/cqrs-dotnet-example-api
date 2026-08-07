@@ -21,7 +21,9 @@
     <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.24.5" />
     <PackageReference Include="WolverineFx.FluentValidation" Version="6.24.5" />
     <PackageReference Include="WolverineFx.Http" Version="6.24.5" />
+    <PackageReference Include="WolverineFx.Http.FluentValidation" Version="6.24.5" />
     <PackageReference Include="WolverineFx.RabbitMQ" Version="6.24.5" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.24.5" />
     <PackageReference Include="WolverineFx.SqlServer" Version="6.24.5" />
   </ItemGroup>
 
