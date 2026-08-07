@@ -1,4 +1,7 @@
 using Alba;
+using ClinicApi.Infrastructure.Persistence;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.MsSql;
 using Testcontainers.RabbitMq;
@@ -30,13 +33,24 @@ public class AppFixture : IAsyncLifetime
             _mssqlContainer.StartAsync(),
             _rabbitMqContainer.StartAsync());
 
+        // Create the ClinicDb database in the container
+        await using var connection = new SqlConnection(MssqlConnectionString + ";TrustServerCertificate=True;");
+        await connection.OpenAsync();
+        await using var cmd = new SqlCommand("CREATE DATABASE ClinicDb;", connection);
+        await cmd.ExecuteNonQueryAsync();
+        await connection.CloseAsync();
+
+        // Create EF Core schema before the app host starts
+        var clinicConnStr = MssqlConnectionString + ";Database=ClinicDb;TrustServerCertificate=True;";
+        var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<ClinicDbContext>();
+        optionsBuilder.UseSqlServer(clinicConnStr);
+        await using var dbContext = new ClinicDbContext(optionsBuilder.Options);
+        await dbContext.Database.EnsureCreatedAsync();
+
         Host = await AlbaHost.For<Program>(builder =>
         {
-            builder.ConfigureServices((context, services) =>
-            {
-                context.Configuration["ConnectionStrings:ClinicDb"] = MssqlConnectionString + ";Database=ClinicDb;TrustServerCertificate=True;";
-                context.Configuration["ConnectionStrings:RabbitMq"] = RabbitMqConnectionString;
-            });
+            builder.UseSetting("ConnectionStrings:ClinicDb", clinicConnStr);
+            builder.UseSetting("ConnectionStrings:RabbitMq", RabbitMqConnectionString);
         });
     }
 
