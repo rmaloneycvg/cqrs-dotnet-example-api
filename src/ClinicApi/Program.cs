@@ -59,10 +59,20 @@ builder.Host.UseWolverine(opts =>
     // FluentValidation middleware
     opts.UseFluentValidation();
 
-    // RabbitMQ transport
+    // RabbitMQ transport (single configuration chain)
     opts.UseRabbitMq(new Uri(rabbitMqConnection))
         .AutoProvision()
-        .EnableWolverineControlQueues();
+        .EnableWolverineControlQueues()
+        .DeclareExchange("clinic.dead-letter", exchange =>
+        {
+            exchange.ExchangeType = ExchangeType.Direct;
+            exchange.IsDurable = true;
+        })
+        .DeclareQueue("clinic.dead-letter-queue", queue =>
+        {
+            queue.IsDurable = true;
+        })
+        .BindExchange("clinic.dead-letter").ToQueue("clinic.dead-letter-queue");
 
     // Configure exchanges
     opts.PublishAllMessages().ToRabbitTopics("clinic.events", exchange =>
@@ -75,16 +85,6 @@ builder.Host.UseWolverine(opts =>
     {
         queue.IsDurable = true;
     });
-
-    // Dead letter configuration via RabbitMQ
-    opts.UseRabbitMq().DeclareExchange("clinic.dead-letter", exchange =>
-    {
-        exchange.ExchangeType = ExchangeType.Direct;
-        exchange.IsDurable = true;
-    }).DeclareQueue("clinic.dead-letter-queue", queue =>
-    {
-        queue.IsDurable = true;
-    }).BindExchange("clinic.dead-letter").ToQueue("clinic.dead-letter-queue");
 
     // Error handling and retry policies
     opts.OnException<TimeoutException>()
