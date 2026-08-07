@@ -5,15 +5,19 @@ using Wolverine;
 namespace ClinicApi.Infrastructure.Middleware;
 
 /// <summary>
-/// Wolverine middleware for structured logging of all handler invocations.
+/// Wolverine middleware for structured logging and performance tracking of all handler invocations.
 /// Wolverine middleware uses the Before/After naming convention.
 /// The middleware is code-generated into the handler pipeline at compile time.
 /// 
 /// Thread-safety: uses Stopwatch.GetTimestamp() instead of instance-level Stopwatch
 /// to avoid corruption under concurrent handler execution.
+/// 
+/// Combines logging and performance tracking in a single middleware to avoid
+/// Wolverine code-generation variable collisions with multiple Before/After middlewares.
 /// </summary>
 public class LoggingMiddleware
 {
+    private const double SlowHandlerThresholdMs = 500;
     private readonly ILogger<LoggingMiddleware> _logger;
 
     public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
@@ -34,39 +38,14 @@ public class LoggingMiddleware
     public void After(Envelope envelope, long startTimestamp)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+
         _logger.LogInformation(
             "Handled message {MessageType} in {ElapsedMs:F1}ms (Id: {MessageId})",
             envelope.MessageType,
             elapsed.TotalMilliseconds,
             envelope.Id);
-    }
-}
 
-/// <summary>
-/// Performance tracking middleware that logs slow handlers.
-/// Emits warnings for handlers that exceed 500ms.
-/// 
-/// Thread-safety: uses Stopwatch.GetTimestamp() instead of instance-level Stopwatch.
-/// </summary>
-public class PerformanceMiddleware
-{
-    private readonly ILogger<PerformanceMiddleware> _logger;
-
-    public PerformanceMiddleware(ILogger<PerformanceMiddleware> logger)
-    {
-        _logger = logger;
-    }
-
-    public long Before(Envelope envelope)
-    {
-        return Stopwatch.GetTimestamp();
-    }
-
-    public void After(Envelope envelope, long startTimestamp)
-    {
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-
-        if (elapsed.TotalMilliseconds > 500)
+        if (elapsed.TotalMilliseconds > SlowHandlerThresholdMs)
         {
             _logger.LogWarning(
                 "Slow handler detected: {MessageType} took {ElapsedMs:F1}ms (Id: {MessageId})",
