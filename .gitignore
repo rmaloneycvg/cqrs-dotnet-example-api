@@ -1,0 +1,61 @@
+# Build outputs
+**/bin/
+**/obj/
+**/publish/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Environment
+.env.local
+.env
+
+# Coverage & test results
+coverage/
+TestResults/
+*.trx
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Docker
+docker-compose.override.yml
+
+# NuGet
+*.nupkg
+packages/
+
+# Performance reports
+BenchmarkDotNet.Artifacts/
+nbomber_reports/
+
+# Tilt
+.tilt-dev/
+tilt_modules/
+
+# Helm
+helm/clinic-api/charts/
+
+# Secrets & certs
+*.pfx
+*.pem
+*.key
+docker/nginx/certs/
+
+# Logs
+logs/
+*.log
+
+# Terraform (if added later)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
