@@ -44,6 +44,9 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>(ServiceLifetime.Si
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ClinicDbContext>("mssql");
 
+// Global exception handling with ProblemDetails
+builder.Services.AddProblemDetails();
+
 // Wolverine HTTP endpoint discovery with FluentValidation
 builder.Services.AddWolverineHttp();
 
@@ -112,6 +115,8 @@ builder.Host.UseWolverine(opts =>
 var app = builder.Build();
 
 // Middleware
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 app.UseHealthChecks("/health");
 
 // Wolverine HTTP endpoints
