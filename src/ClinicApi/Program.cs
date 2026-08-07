@@ -6,6 +6,7 @@ using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
 using Wolverine.FluentValidation;
 using Wolverine.Http;
+using Wolverine.Http.FluentValidation;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
 
@@ -22,7 +23,6 @@ builder.Services.AddDbContextWithWolverineIntegration<ClinicDbContext>(options =
 {
     options.UseSqlServer(connectionString, sqlOptions =>
     {
-        sqlOptions.EnableRetryOnFailure(3);
         sqlOptions.CommandTimeout(30);
     });
 });
@@ -36,11 +36,14 @@ builder.Services.AddSingleton<IDbConnectionFactory>(new SqlConnectionFactory(con
 builder.Services.AddSingleton<IBulkInsertService>(new SqlBulkInsertService(connectionString));
 
 // FluentValidation - auto-register validators from this assembly
-builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+builder.Services.AddValidatorsFromAssemblyContaining<Program>(ServiceLifetime.Singleton);
 
 // Health checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ClinicDbContext>("mssql");
+
+// Wolverine HTTP endpoint discovery with FluentValidation
+builder.Services.AddWolverineHttp();
 
 // Wolverine configuration
 builder.Host.UseWolverine(opts =>
@@ -109,7 +112,10 @@ var app = builder.Build();
 app.UseHealthChecks("/health");
 
 // Wolverine HTTP endpoints
-app.MapWolverineEndpoints();
+app.MapWolverineEndpoints(opts =>
+{
+    opts.UseFluentValidationProblemDetailMiddleware();
+});
 
 app.Run();
 

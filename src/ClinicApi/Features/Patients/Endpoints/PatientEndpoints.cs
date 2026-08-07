@@ -1,41 +1,76 @@
+using ClinicApi.Domain.Entities;
+using ClinicApi.Domain.Events;
+using ClinicApi.Domain.ValueObjects;
 using ClinicApi.Features.Patients.Commands;
 using ClinicApi.Features.Patients.Queries;
+using ClinicApi.Infrastructure.Persistence;
+using Wolverine;
 using Wolverine.Http;
 
 namespace ClinicApi.Features.Patients.Endpoints;
 
 /// <summary>
 /// HTTP endpoints for the Patients feature using WolverineFx.Http.
-/// Each method is both an HTTP endpoint and routes through Wolverine's handler pipeline
+/// Each method routes through Wolverine's handler pipeline
 /// (including FluentValidation middleware, logging middleware, etc.)
 /// </summary>
 public static class PatientEndpoints
 {
     [WolverinePost("/api/patients")]
-    public static Task<CreatePatientResponse> CreatePatient(CreatePatient command) => throw new NotImplementedException();
+    public static async Task<CreatePatientResponse> CreatePatient(
+        CreatePatient command, ClinicDbContext db, IMessageBus bus, CancellationToken ct)
+    {
+        var patient = new Patient
+        {
+            FirstName = command.FirstName,
+            LastName = command.LastName,
+            DateOfBirth = command.DateOfBirth,
+            Email = command.Email,
+            Phone = new PhoneNumber(command.PhoneNumber),
+            Address = new Address(command.Street, command.City, command.State, command.ZipCode),
+            ExternalId = command.ExternalId
+        };
+
+        db.Patients.Add(patient);
+        await db.SaveChangesAsync(ct);
+
+        await bus.PublishAsync(new PatientCreated(patient.Id, patient.FirstName, patient.LastName, patient.Email));
+
+        return new CreatePatientResponse(patient.Id, patient.FullName, patient.Email);
+    }
 
     [WolverineGet("/api/patients/{id}")]
-    public static Task<PatientDto?> GetPatient(Guid id) => throw new NotImplementedException();
+    public static Task<PatientDto?> GetPatient(Guid id, IMessageBus bus)
+        => bus.InvokeAsync<PatientDto?>(new GetPatientById(id));
 
     [WolverineGet("/api/patients")]
-    public static Task<PatientListResponse> ListPatients(int page = 1, int pageSize = 20, string? status = null, string? searchTerm = null) => throw new NotImplementedException();
+    public static Task<PatientListResponse> ListPatients(
+        int page, int pageSize, string? status, string? searchTerm, IMessageBus bus)
+        => bus.InvokeAsync<PatientListResponse>(new ListPatients(
+            page == 0 ? 1 : page, pageSize == 0 ? 20 : pageSize, status, searchTerm));
 
     [WolverinePut("/api/patients/{id}")]
-    public static Task UpdatePatient(Guid id, UpdatePatient command) => throw new NotImplementedException();
+    public static Task UpdatePatient(Guid id, UpdatePatient command, IMessageBus bus)
+        => bus.InvokeAsync(command with { Id = id });
 
     // Batch operations
     [WolverinePost("/api/patients/batch-import")]
-    public static Task<BatchImportResult> BatchImport(ImportPatientsBatch command) => throw new NotImplementedException();
+    public static Task<BatchImportResult> BatchImport(ImportPatientsBatch command, IMessageBus bus)
+        => bus.InvokeAsync<BatchImportResult>(command);
 
     [WolverinePost("/api/patients/bulk-import")]
-    public static Task<BatchImportResult> BulkImport(BulkImportPatients command) => throw new NotImplementedException();
+    public static Task<BatchImportResult> BulkImport(BulkImportPatients command, IMessageBus bus)
+        => bus.InvokeAsync<BatchImportResult>(command);
 
     [WolverinePost("/api/patients/deactivate-inactive")]
-    public static Task<DeactivateResult> DeactivateInactive(DeactivateInactivePatients command) => throw new NotImplementedException();
+    public static Task<DeactivateResult> DeactivateInactive(DeactivateInactivePatients command, IMessageBus bus)
+        => bus.InvokeAsync<DeactivateResult>(command);
 
     [WolverinePost("/api/patients/update-insurance-batch")]
-    public static Task<BatchUpdateResult> UpdateInsuranceBatch(UpdatePatientInsuranceInfo command) => throw new NotImplementedException();
+    public static Task<BatchUpdateResult> UpdateInsuranceBatch(UpdatePatientInsuranceInfo command, IMessageBus bus)
+        => bus.InvokeAsync<BatchUpdateResult>(command);
 
     [WolverinePost("/api/patients/purge-expired")]
-    public static Task<PurgeResult> PurgeExpired(PurgeExpiredRecords command) => throw new NotImplementedException();
+    public static Task<PurgeResult> PurgeExpired(PurgeExpiredRecords command, IMessageBus bus)
+        => bus.InvokeAsync<PurgeResult>(command);
 }
