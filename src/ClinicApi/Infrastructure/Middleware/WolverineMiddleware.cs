@@ -8,34 +8,36 @@ namespace ClinicApi.Infrastructure.Middleware;
 /// Wolverine middleware for structured logging of all handler invocations.
 /// Wolverine middleware uses the Before/After naming convention.
 /// The middleware is code-generated into the handler pipeline at compile time.
+/// 
+/// Thread-safety: uses Stopwatch.GetTimestamp() instead of instance-level Stopwatch
+/// to avoid corruption under concurrent handler execution.
 /// </summary>
 public class LoggingMiddleware
 {
     private readonly ILogger<LoggingMiddleware> _logger;
-    private readonly Stopwatch _stopwatch = new();
 
     public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
     {
         _logger = logger;
     }
 
-    public void Before(Envelope envelope)
+    public long Before(Envelope envelope)
     {
-        _stopwatch.Restart();
         _logger.LogInformation(
             "Handling message {MessageType} (Id: {MessageId}, CorrelationId: {CorrelationId})",
             envelope.MessageType,
             envelope.Id,
             envelope.CorrelationId);
+        return Stopwatch.GetTimestamp();
     }
 
-    public void After(Envelope envelope)
+    public void After(Envelope envelope, long startTimestamp)
     {
-        _stopwatch.Stop();
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
         _logger.LogInformation(
-            "Handled message {MessageType} in {ElapsedMs}ms (Id: {MessageId})",
+            "Handled message {MessageType} in {ElapsedMs:F1}ms (Id: {MessageId})",
             envelope.MessageType,
-            _stopwatch.ElapsedMilliseconds,
+            elapsed.TotalMilliseconds,
             envelope.Id);
     }
 }
@@ -43,32 +45,33 @@ public class LoggingMiddleware
 /// <summary>
 /// Performance tracking middleware that logs slow handlers.
 /// Emits warnings for handlers that exceed 500ms.
+/// 
+/// Thread-safety: uses Stopwatch.GetTimestamp() instead of instance-level Stopwatch.
 /// </summary>
 public class PerformanceMiddleware
 {
     private readonly ILogger<PerformanceMiddleware> _logger;
-    private readonly Stopwatch _stopwatch = new();
 
     public PerformanceMiddleware(ILogger<PerformanceMiddleware> logger)
     {
         _logger = logger;
     }
 
-    public void Before(Envelope envelope)
+    public long Before(Envelope envelope)
     {
-        _stopwatch.Restart();
+        return Stopwatch.GetTimestamp();
     }
 
-    public void After(Envelope envelope)
+    public void After(Envelope envelope, long startTimestamp)
     {
-        _stopwatch.Stop();
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
 
-        if (_stopwatch.ElapsedMilliseconds > 500)
+        if (elapsed.TotalMilliseconds > 500)
         {
             _logger.LogWarning(
-                "Slow handler detected: {MessageType} took {ElapsedMs}ms (Id: {MessageId})",
+                "Slow handler detected: {MessageType} took {ElapsedMs:F1}ms (Id: {MessageId})",
                 envelope.MessageType,
-                _stopwatch.ElapsedMilliseconds,
+                elapsed.TotalMilliseconds,
                 envelope.Id);
         }
     }
