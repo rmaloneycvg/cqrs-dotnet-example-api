@@ -14,9 +14,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 var connectionString = builder.Configuration.GetConnectionString("ClinicDb")
-    ?? "Server=localhost,1433;Database=ClinicDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;";
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:ClinicDb is required. Set it in appsettings.json, environment variables, or user-secrets.");
 var rabbitMqConnection = builder.Configuration.GetConnectionString("RabbitMq")
-    ?? "amqp://guest:guest@localhost:5672";
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:RabbitMq is required. Set it in appsettings.json, environment variables, or user-secrets.");
 
 // EF Core (write-side)
 builder.Services.AddDbContextWithWolverineIntegration<ClinicDbContext>(options =>
