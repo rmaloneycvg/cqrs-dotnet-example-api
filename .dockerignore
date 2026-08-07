@@ -1,0 +1,65 @@
+# Build outputs
+**/bin/
+**/obj/
+**/publish/
+
+# Tests (not needed in production image)
+tests/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Git
+.git/
+.gitignore
+
+# Environment & secrets
+.env
+.env.local
+.env.example
+*.pfx
+*.pem
+*.key
+
+# Docker (avoid recursive context)
+docker/
+docker-compose.override.yml
+.dockerignore
+Dockerfile*
+
+# Helm & Tilt
+helm/
+Tiltfile
+.tilt-dev/
+tilt_modules/
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage & reports
+coverage/
+TestResults/
+BenchmarkDotNet.Artifacts/
+nbomber_reports/
+
+# NuGet
+*.nupkg
+packages/
+
+# Terraform
+terraform/
+**/.terraform/
+*.tfstate*
+
+# Makefile (not needed in container)
+Makefile

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ClinicApi/ClinicApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ClinicApi.Integration/ClinicApi.Integration.csproj" />
+    <Project Path="tests/ClinicApi.Performance/ClinicApi.Performance.csproj" />
+    <Project Path="tests/ClinicApi.Unit/ClinicApi.Unit.csproj" />
+  </Folder>
+</Solution>

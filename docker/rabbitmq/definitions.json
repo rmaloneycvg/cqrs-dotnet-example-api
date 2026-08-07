@@ -1,0 +1,144 @@
+{
+  "rabbit_version": "4.0.0",
+  "vhosts": [
+    { "name": "/" }
+  ],
+  "users": [
+    {
+      "name": "guest",
+      "password_hash": "guest",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "guest",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "clinic.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false
+    },
+    {
+      "name": "clinic.commands",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false
+    },
+    {
+      "name": "clinic.dead-letter",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false
+    }
+  ],
+  "queues": [
+    {
+      "name": "clinic.commands",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "clinic.dead-letter",
+        "x-dead-letter-routing-key": "clinic.dead-letter-queue"
+      }
+    },
+    {
+      "name": "clinic.dead-letter-queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "clinic.events.patient",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "clinic.events.billing",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "clinic.events.appointments",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "clinic.events.prescriptions",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "clinic.insurance-verification",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "clinic.commands",
+      "vhost": "/",
+      "destination": "clinic.commands",
+      "destination_type": "queue",
+      "routing_key": "clinic.commands"
+    },
+    {
+      "source": "clinic.dead-letter",
+      "vhost": "/",
+      "destination": "clinic.dead-letter-queue",
+      "destination_type": "queue",
+      "routing_key": "clinic.dead-letter-queue"
+    },
+    {
+      "source": "clinic.events",
+      "vhost": "/",
+      "destination": "clinic.events.patient",
+      "destination_type": "queue",
+      "routing_key": "patient.#"
+    },
+    {
+      "source": "clinic.events",
+      "vhost": "/",
+      "destination": "clinic.events.billing",
+      "destination_type": "queue",
+      "routing_key": "billing.#"
+    },
+    {
+      "source": "clinic.events",
+      "vhost": "/",
+      "destination": "clinic.events.appointments",
+      "destination_type": "queue",
+      "routing_key": "appointment.#"
+    },
+    {
+      "source": "clinic.events",
+      "vhost": "/",
+      "destination": "clinic.events.prescriptions",
+      "destination_type": "queue",
+      "routing_key": "prescription.#"
+    }
+  ]
+}
