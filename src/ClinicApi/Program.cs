@@ -103,6 +103,10 @@ builder.Host.UseWolverine(opts =>
 
     // Discovery
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
+
+    // Custom middleware
+    opts.Policies.AddMiddleware(typeof(ClinicApi.Infrastructure.Middleware.LoggingMiddleware));
+    opts.Policies.AddMiddleware(typeof(ClinicApi.Infrastructure.Middleware.PerformanceMiddleware));
 });
 
 var app = builder.Build();
