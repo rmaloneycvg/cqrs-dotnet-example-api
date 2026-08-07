@@ -50,6 +50,9 @@ builder.Services.AddProblemDetails();
 // Wolverine HTTP endpoint discovery with FluentValidation
 builder.Services.AddWolverineHttp();
 
+// OpenAPI documentation
+builder.Services.AddOpenApi();
+
 // Wolverine configuration
 builder.Host.UseWolverine(opts =>
 {
@@ -118,6 +121,12 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseHealthChecks("/health");
+
+// OpenAPI (development only)
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
 
 // Wolverine HTTP endpoints
 app.MapWolverineEndpoints(opts =>
