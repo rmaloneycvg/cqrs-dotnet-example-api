@@ -38,8 +38,9 @@ public class AppointmentSchedulingSaga : Wolverine.Saga
     /// <summary>
     /// Start handler: triggered when a ScheduleAppointment command arrives.
     /// Returns cascaded messages: an availability check event AND a timeout message.
+    /// AppointmentTimedOut extends Wolverine's TimeoutMessage for native saga timeout support.
     /// </summary>
-    public static (AppointmentSchedulingSaga, AppointmentRequested, ScheduledMessage<AppointmentTimedOut>) Start(
+    public static (AppointmentSchedulingSaga, AppointmentRequested, AppointmentTimedOut) Start(
         ScheduleAppointment command)
     {
         var sagaId = Guid.NewGuid();
@@ -56,10 +57,8 @@ public class AppointmentSchedulingSaga : Wolverine.Saga
 
         var @event = new AppointmentRequested(sagaId, command.PatientId, command.ProviderName, command.ScheduledAt);
 
-        // Schedule a timeout message for 15 minutes — if saga hasn't completed by then, compensate
-        var timeout = new ScheduledMessage<AppointmentTimedOut>(
-            new AppointmentTimedOut(sagaId, command.PatientId),
-            TimeSpan.FromMinutes(15));
+        // Wolverine delivers TimeoutMessage after the specified delay
+        var timeout = new AppointmentTimedOut(sagaId, command.PatientId);
 
         return (saga, @event, timeout);
     }
@@ -181,7 +180,9 @@ public record ScheduleAppointment(
     string? Reason = null);
 
 /// <summary>
-/// Wolverine scheduled message wrapper.
-/// Wolverine delivers this after the specified delay.
+/// Wolverine saga timeout message. Inheriting from TimeoutMessage tells
+/// Wolverine to deliver this after the specified delay and ignore it if
+/// the saga no longer exists.
 /// </summary>
-public record ScheduledMessage<T>(T Message, TimeSpan Delay);
+public record AppointmentTimedOut(Guid AppointmentId, Guid PatientId)
+    : TimeoutMessage(TimeSpan.FromMinutes(15));

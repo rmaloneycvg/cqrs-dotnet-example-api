@@ -13,7 +13,6 @@ public record AvailabilityDenied(Guid AppointmentId, Guid PatientId, string Reas
 public record SlotBooked(Guid AppointmentId, Guid PatientId);
 public record BookingFailed(Guid AppointmentId, Guid PatientId, string Reason);
 public record AppointmentConfirmed(Guid AppointmentId, Guid PatientId);
-public record AppointmentTimedOut(Guid AppointmentId, Guid PatientId);
 
 // Billing Events
 public record InvoiceCreated(Guid InvoiceId, Guid PatientId, decimal Amount, DateTime DueDate);
