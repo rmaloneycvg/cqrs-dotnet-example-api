@@ -84,6 +84,12 @@ builder.Host.UseWolverine(opts =>
     opts.ListenToRabbitQueue("clinic.commands", queue =>
     {
         queue.IsDurable = true;
+    }).CircuitBreaker(cb =>
+    {
+        cb.MinimumThreshold = 5;
+        cb.PauseTime = TimeSpan.FromSeconds(30);
+        cb.TrackingPeriod = TimeSpan.FromMinutes(1);
+        cb.FailurePercentageThreshold = 50;
     });
 
     // Error handling and retry policies
@@ -92,15 +98,6 @@ builder.Host.UseWolverine(opts =>
 
     opts.OnException<InvalidOperationException>()
         .MoveToErrorQueue();
-
-    // Circuit breaker on listener endpoints
-    opts.ListenToRabbitQueue("clinic.commands").CircuitBreaker(cb =>
-    {
-        cb.MinimumThreshold = 5;
-        cb.PauseTime = TimeSpan.FromSeconds(30);
-        cb.TrackingPeriod = TimeSpan.FromMinutes(1);
-        cb.FailurePercentageThreshold = 50;
-    });
 
     // Discovery
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
