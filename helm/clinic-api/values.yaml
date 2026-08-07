@@ -1,0 +1,220 @@
+# ─── Default Values (shared across all environments) ──────────────────────────
+# Override per-environment in values-dev.yaml, values-staging.yaml, values-prod.yaml
+
+global:
+  namespace: clinic-api
+
+# ─── Clinic API ───────────────────────────────────────────────────────────────
+clinicApi:
+  replicaCount: 1
+  image:
+    repository: clinic-api
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  port: 5000
+  env:
+    ASPNETCORE_ENVIRONMENT: Production
+    ASPNETCORE_URLS: "http://+:5000"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  readinessProbe:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+  livenessProbe:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+  # Secrets are mounted via external secret reference
+  secretRef: clinic-secrets
+
+# ─── NGINX Gateway ───────────────────────────────────────────────────────────
+nginx:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: nginx-gateway
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+  service:
+    type: ClusterIP
+    httpPort: 80
+    httpsPort: 443
+  tls:
+    # "self-signed" for dev, "cert-manager" for staging/prod
+    mode: self-signed
+    secretName: nginx-tls
+    # cert-manager issuer (only used when mode is cert-manager)
+    issuerName: ""
+    issuerKind: ClusterIssuer
+    dnsNames: []
+  cors:
+    origins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+      - "https://localhost"
+  rateLimiting:
+    api:
+      rate: "100r/s"
+      burst: 20
+    auth:
+      rate: "10r/s"
+      burst: 5
+    management:
+      rate: "30r/s"
+      burst: 10
+  # Expose RabbitMQ management via nginx
+  rabbitmqManagement:
+    enabled: true
+  cache:
+    enabled: true
+    maxSize: "100m"
+    validDuration: "1m"
+
+# ─── MSSQL ───────────────────────────────────────────────────────────────────
+mssql:
+  enabled: true
+  image:
+    repository: mcr.microsoft.com/mssql/server
+    tag: "2022-latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  persistence:
+    enabled: false
+    size: "10Gi"
+    storageClass: ""
+
+# ─── RabbitMQ ─────────────────────────────────────────────────────────────────
+rabbitmq:
+  enabled: true
+  image:
+    repository: rabbitmq
+    tag: "4-management"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  persistence:
+    enabled: false
+    size: "5Gi"
+    storageClass: ""
+
+# ─── Database Migration Job ──────────────────────────────────────────────────
+dbMigrate:
+  enabled: true
+  image:
+    repository: clinic-api
+    tag: "latest"
+  backoffLimit: 1
+  # When true, runs as a Helm post-install/post-upgrade hook.
+  # When false, creates a standalone Job (for Tilt manual trigger).
+  helmHook: true
+
+# ─── Secrets ──────────────────────────────────────────────────────────────────
+# Set create: true for dev/local. In staging/prod, use External Secrets or
+# sealed-secrets and set create: false.
+secrets:
+  create: false
+  data: {}
+
+# ─── Security Rings ──────────────────────────────────────────────────────────
+# Defense-in-depth: 5 concentric rings from network perimeter to data layer.
+# Each ring is toggled per environment. Dev disables most (no Istio locally),
+# staging enables with permissive policies, prod enforces strict.
+
+security:
+  # Ring 1 — Network Perimeter (Cloud Firewall / WAF / Load Balancer)
+  # Managed externally (cloud provider). Chart only controls annotations.
+  ring1:
+    enabled: false
+    waf:
+      enabled: false
+      # Cloud-specific annotations on the LoadBalancer service
+      annotations: {}
+        # aws: service.beta.kubernetes.io/aws-load-balancer-waf-acl-id: "acl-xxx"
+        # azure: service.beta.kubernetes.io/azure-load-balancer-resource-group: "rg-waf"
+
+  # Ring 2 — Cluster Edge (Istio Ingress Gateway + Network Policies)
+  ring2:
+    enabled: false
+    istioGateway:
+      enabled: false
+      hosts:
+        - "api.example.com"
+      jwtValidation:
+        enabled: false
+        issuer: ""
+        jwksUri: ""
+        audiences: []
+    networkPolicies:
+      enabled: false
+      # Default deny all ingress/egress, then allow only declared paths
+      defaultDeny: true
+
+  # Ring 3 — Service Mesh (Istio mTLS + Authorization Policies)
+  ring3:
+    enabled: false
+    mtls:
+      enabled: false
+      mode: STRICT  # STRICT or PERMISSIVE
+    authorizationPolicies:
+      enabled: false
+      # Only allow traffic from known service accounts
+      allowedSources:
+        - "cluster.local/ns/clinic-api/sa/clinic-api"
+        - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+
+  # Ring 4 — Workload (Pod Security Admission + RBAC + Secret Encryption)
+  ring4:
+    enabled: false
+    podSecurityAdmission:
+      enabled: false
+      # "restricted" (prod), "baseline" (staging), "privileged" (dev/off)
+      level: restricted
+      mode: enforce  # enforce, audit, warn
+    rbac:
+      enabled: false
+      # Create a ServiceAccount + Role with minimum permissions
+      createServiceAccount: true
+      serviceAccountName: clinic-api
+    secretEncryption:
+      enabled: false
+      # KMS provider for etcd secret encryption
+      provider: ""  # "aws-kms", "azure-keyvault", "gcp-kms"
+
+  # Ring 5 — Data (Encryption at Rest + Audit Logging)
+  ring5:
+    enabled: false
+    encryptionAtRest:
+      enabled: false
+      # MSSQL TDE or managed DB encryption (handled by cloud provider)
+      mssqlTDE: false
+    auditLogging:
+      enabled: false
+      # Immutable audit log sink
+      retentionYears: 6
+      destination: ""  # "cloudwatch", "stackdriver", "azure-monitor"

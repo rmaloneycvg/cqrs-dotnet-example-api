@@ -1,0 +1,153 @@
+# ─── Staging Environment Overrides ────────────────────────────────────────────
+# Pre-production validation. Real TLS via cert-manager, moderate resources,
+# restricted CORS, persistent storage.
+
+global:
+  namespace: clinic-api-staging
+
+clinicApi:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/your-org/clinic-api  # TODO: replace with actual registry
+    tag: "staging"
+    pullPolicy: Always
+  env:
+    ASPNETCORE_ENVIRONMENT: Staging
+    ASPNETCORE_URLS: "http://+:5000"
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  secretRef: clinic-secrets
+
+nginx:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/your-org/nginx-gateway
+    tag: "staging"
+    pullPolicy: Always
+  tls:
+    mode: cert-manager
+    secretName: nginx-tls
+    issuerName: letsencrypt-staging
+    issuerKind: ClusterIssuer
+    dnsNames:
+      - api-staging.example.com
+  cors:
+    origins:
+      - "https://staging.example.com"
+      - "https://app-staging.example.com"
+  rateLimiting:
+    api:
+      rate: "100r/s"
+      burst: 20
+    auth:
+      rate: "10r/s"
+      burst: 5
+    management:
+      rate: "30r/s"
+      burst: 10
+  rabbitmqManagement:
+    enabled: true  # Still accessible in staging for debugging
+  cache:
+    enabled: true
+    maxSize: "200m"
+    validDuration: "2m"
+
+mssql:
+  enabled: true
+  persistence:
+    enabled: true
+    size: "20Gi"
+    storageClass: "managed-premium"  # Azure example; adjust for your cloud
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+
+rabbitmq:
+  enabled: true
+  persistence:
+    enabled: true
+    size: "10Gi"
+    storageClass: "managed-premium"
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+dbMigrate:
+  enabled: true
+  image:
+    repository: ghcr.io/your-org/clinic-api
+    tag: "staging"
+
+# ─── Security Rings (Staging: progressive enforcement) ────────────────────────
+security:
+  ring1:
+    enabled: true
+    waf:
+      enabled: true
+      annotations:
+        # Example: AWS WAF ACL attached to the load balancer
+        service.beta.kubernetes.io/aws-load-balancer-waf-acl-id: "acl-staging-xxx"
+
+  ring2:
+    enabled: true
+    istioGateway:
+      enabled: true
+      hosts:
+        - "api-staging.example.com"
+      jwtValidation:
+        enabled: true
+        issuer: "https://auth-staging.example.com/"
+        jwksUri: "https://auth-staging.example.com/.well-known/jwks.json"
+        audiences:
+          - "clinic-api-staging"
+    networkPolicies:
+      enabled: true
+      defaultDeny: true
+
+  ring3:
+    enabled: true
+    mtls:
+      enabled: true
+      mode: PERMISSIVE  # Allow plaintext during migration; strict in prod
+    authorizationPolicies:
+      enabled: true
+      allowedSources:
+        - "cluster.local/ns/clinic-api-staging/sa/clinic-api"
+        - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+
+  ring4:
+    enabled: true
+    podSecurityAdmission:
+      enabled: true
+      level: baseline
+      mode: enforce
+    rbac:
+      enabled: true
+      createServiceAccount: true
+      serviceAccountName: clinic-api
+    secretEncryption:
+      enabled: true
+      provider: "aws-kms"  # Adjust for your cloud
+
+  ring5:
+    enabled: true
+    encryptionAtRest:
+      enabled: true
+      mssqlTDE: true
+    auditLogging:
+      enabled: true
+      retentionYears: 1     # Shorter retention for staging
+      destination: "cloudwatch"

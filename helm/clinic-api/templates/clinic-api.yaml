@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clinic-api
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    {{- include "clinic-api.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.clinicApi.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clinic-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clinic-api.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if and .Values.security.ring4.enabled .Values.security.ring4.rbac.enabled }}
+      serviceAccountName: {{ .Values.security.ring4.rbac.serviceAccountName }}
+      automountServiceAccountToken: false
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: clinic-api
+          image: "{{ .Values.clinicApi.image.repository }}:{{ .Values.clinicApi.image.tag }}"
+          imagePullPolicy: {{ .Values.clinicApi.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: {{ .Values.clinicApi.port }}
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.clinicApi.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.clinicApi.secretRef }}
+          resources:
+            {{- toYaml .Values.clinicApi.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.clinicApi.readinessProbe.path }}
+              port: {{ .Values.clinicApi.port }}
+            initialDelaySeconds: {{ .Values.clinicApi.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.clinicApi.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.clinicApi.readinessProbe.timeoutSeconds }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.clinicApi.livenessProbe.path }}
+              port: {{ .Values.clinicApi.port }}
+            initialDelaySeconds: {{ .Values.clinicApi.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.clinicApi.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.clinicApi.livenessProbe.timeoutSeconds }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clinic-api-service
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "clinic-api.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.clinicApi.port }}
+      targetPort: {{ .Values.clinicApi.port }}
+      protocol: TCP
+  type: ClusterIP

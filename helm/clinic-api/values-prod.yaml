@@ -1,0 +1,138 @@
+# ─── Production Environment Overrides ─────────────────────────────────────────
+# High availability. Production TLS, strict CORS, generous resources,
+# persistent storage, no management UI exposed.
+
+global:
+  namespace: clinic-api-prod
+
+clinicApi:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/your-org/clinic-api  # TODO: replace with actual registry
+    tag: "1.0.0"  # Pin to semver release tag
+    pullPolicy: IfNotPresent
+  env:
+    ASPNETCORE_ENVIRONMENT: Production
+    ASPNETCORE_URLS: "http://+:5000"
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "2000m"
+  secretRef: clinic-secrets
+
+nginx:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/your-org/nginx-gateway
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  tls:
+    mode: cert-manager
+    secretName: nginx-tls
+    issuerName: letsencrypt-prod
+    issuerKind: ClusterIssuer
+    dnsNames:
+      - api.example.com
+  cors:
+    origins:
+      - "https://app.example.com"
+      - "https://www.example.com"
+  rateLimiting:
+    api:
+      rate: "100r/s"
+      burst: 20
+    auth:
+      rate: "10r/s"
+      burst: 5
+    management:
+      rate: "30r/s"
+      burst: 10
+  rabbitmqManagement:
+    enabled: false  # NEVER expose management UI in production
+  cache:
+    enabled: true
+    maxSize: "500m"
+    validDuration: "5m"
+  service:
+    type: LoadBalancer  # Or use an ingress controller
+
+mssql:
+  # In production, prefer a managed database service (Azure SQL, RDS).
+  # Set enabled: false and provide connection string via secrets.
+  enabled: false
+
+rabbitmq:
+  # In production, prefer a managed service (CloudAMQP, Amazon MQ).
+  # Set enabled: false and provide connection string via secrets.
+  enabled: false
+
+dbMigrate:
+  enabled: true
+  image:
+    repository: ghcr.io/your-org/clinic-api
+    tag: "1.0.0"
+
+# ─── Security Rings (Prod: full enforcement, all rings active) ────────────────
+security:
+  ring1:
+    enabled: true
+    waf:
+      enabled: true
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-waf-acl-id: "acl-prod-xxx"
+        service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:xxx:certificate/xxx"
+        service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+
+  ring2:
+    enabled: true
+    istioGateway:
+      enabled: true
+      hosts:
+        - "api.example.com"
+      jwtValidation:
+        enabled: true
+        issuer: "https://auth.example.com/"
+        jwksUri: "https://auth.example.com/.well-known/jwks.json"
+        audiences:
+          - "clinic-api"
+    networkPolicies:
+      enabled: true
+      defaultDeny: true
+
+  ring3:
+    enabled: true
+    mtls:
+      enabled: true
+      mode: STRICT  # No plaintext pod-to-pod communication allowed
+    authorizationPolicies:
+      enabled: true
+      allowedSources:
+        - "cluster.local/ns/clinic-api-prod/sa/clinic-api"
+        - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+
+  ring4:
+    enabled: true
+    podSecurityAdmission:
+      enabled: true
+      level: restricted  # Most restrictive PSA profile
+      mode: enforce
+    rbac:
+      enabled: true
+      createServiceAccount: true
+      serviceAccountName: clinic-api
+    secretEncryption:
+      enabled: true
+      provider: "aws-kms"
+
+  ring5:
+    enabled: true
+    encryptionAtRest:
+      enabled: true
+      mssqlTDE: true
+    auditLogging:
+      enabled: true
+      retentionYears: 6     # Healthcare compliance: 6-year immutable retention
+      destination: "cloudwatch"

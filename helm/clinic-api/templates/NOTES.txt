@@ -1,0 +1,37 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Environment: {{ .Values.clinicApi.env.ASPNETCORE_ENVIRONMENT }}
+Namespace:   {{ include "clinic-api.namespace" . }}
+Replicas:    {{ .Values.clinicApi.replicaCount }} (API) / {{ .Values.nginx.replicaCount }} (NGINX)
+
+{{- if eq .Values.nginx.service.type "ClusterIP" }}
+
+Access the API via port-forward:
+  kubectl port-forward svc/nginx-gateway {{ .Values.nginx.service.httpsPort }}:443 -n {{ include "clinic-api.namespace" . }}
+  curl https://localhost:{{ .Values.nginx.service.httpsPort }}/api/health -k
+{{- end }}
+
+{{- if eq .Values.nginx.service.type "LoadBalancer" }}
+
+Get the external IP:
+  kubectl get svc nginx-gateway -n {{ include "clinic-api.namespace" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+{{- end }}
+
+{{- if .Values.mssql.enabled }}
+
+MSSQL is deployed in-cluster (dev/staging mode).
+{{- else }}
+
+MSSQL: Using external managed database. Ensure ConnectionStrings__ClinicDb is set in the secret.
+{{- end }}
+
+{{- if .Values.rabbitmq.enabled }}
+
+RabbitMQ is deployed in-cluster.
+{{- if .Values.nginx.rabbitmqManagement.enabled }}
+  Management UI: https://<host>/rabbitmq/
+{{- end }}
+{{- else }}
+
+RabbitMQ: Using external managed service. Ensure ConnectionStrings__RabbitMq is set in the secret.
+{{- end }}

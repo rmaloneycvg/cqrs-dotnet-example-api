@@ -1,0 +1,99 @@
+{{- if .Values.mssql.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mssql
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    {{- include "mssql.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mssql.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mssql.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: mssql
+          image: "{{ .Values.mssql.image.repository }}:{{ .Values.mssql.image.tag }}"
+          imagePullPolicy: {{ .Values.mssql.image.pullPolicy }}
+          ports:
+            - containerPort: 1433
+              protocol: TCP
+          env:
+            - name: ACCEPT_EULA
+              value: "Y"
+            - name: MSSQL_SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.clinicApi.secretRef }}
+                  key: SA_PASSWORD
+          resources:
+            {{- toYaml .Values.mssql.resources | nindent 12 }}
+          readinessProbe:
+            exec:
+              command:
+                - /opt/mssql-tools18/bin/sqlcmd
+                - -S
+                - localhost
+                - -U
+                - sa
+                - -P
+                - "$(MSSQL_SA_PASSWORD)"
+                - -C
+                - -Q
+                - "SELECT 1"
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          {{- if .Values.mssql.persistence.enabled }}
+          volumeMounts:
+            - name: mssql-data
+              mountPath: /var/opt/mssql
+          {{- end }}
+      {{- if .Values.mssql.persistence.enabled }}
+      volumes:
+        - name: mssql-data
+          persistentVolumeClaim:
+            claimName: mssql-data
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mssql-service
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "mssql.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: 1433
+      targetPort: 1433
+      protocol: TCP
+  type: ClusterIP
+{{- if .Values.mssql.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mssql-data
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.mssql.persistence.size }}
+  {{- if .Values.mssql.persistence.storageClass }}
+  storageClassName: {{ .Values.mssql.persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,18 @@
+{{- if and .Values.nginx.enabled (eq .Values.nginx.tls.mode "cert-manager") }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nginx-tls
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.nginx.tls.secretName }}
+  issuerRef:
+    name: {{ .Values.nginx.tls.issuerName }}
+    kind: {{ .Values.nginx.tls.issuerKind }}
+  dnsNames:
+    {{- range .Values.nginx.tls.dnsNames }}
+    - {{ . | quote }}
+    {{- end }}
+{{- end }}

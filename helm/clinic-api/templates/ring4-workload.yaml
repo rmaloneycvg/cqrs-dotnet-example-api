@@ -1,0 +1,56 @@
+{{- if .Values.security.ring4.enabled }}
+{{- if .Values.security.ring4.rbac.enabled }}
+# ─── Ring 4: ServiceAccount ──────────────────────────────────────────────────
+{{- if .Values.security.ring4.rbac.createServiceAccount }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.security.ring4.rbac.serviceAccountName }}
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "4"
+automountServiceAccountToken: false
+---
+{{- end }}
+# ─── Ring 4: Role (least privilege) ──────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: clinic-api-role
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "4"
+rules:
+  # Only allow reading secrets and configmaps the app needs
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "watch"]
+    resourceNames:
+      - {{ .Values.clinicApi.secretRef }}
+      - nginx-config
+  # Allow reading own pod status (for health orchestration)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+---
+# ─── Ring 4: RoleBinding ─────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: clinic-api-rolebinding
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "4"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: clinic-api-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.security.ring4.rbac.serviceAccountName }}
+    namespace: {{ include "clinic-api.namespace" . }}
+{{- end }}
+{{- end }}

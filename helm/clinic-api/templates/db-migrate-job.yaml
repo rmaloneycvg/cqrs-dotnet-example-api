@@ -1,0 +1,37 @@
+{{- if .Values.dbMigrate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate{{ if not .Values.dbMigrate.helmHook }}-manual{{ else }}-{{ .Release.Revision }}{{ end }}
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    app: db-migrate
+  {{- if .Values.dbMigrate.helmHook }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+  {{- end }}
+spec:
+  backoffLimit: {{ .Values.dbMigrate.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app: db-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: db-migrate
+          image: "{{ .Values.dbMigrate.image.repository }}:{{ .Values.dbMigrate.image.tag }}"
+          command:
+            - dotnet
+            - ClinicApi.dll
+            - --migrate
+          envFrom:
+            - secretRef:
+                name: {{ .Values.clinicApi.secretRef }}
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: {{ .Values.clinicApi.env.ASPNETCORE_ENVIRONMENT | default "Production" | quote }}
+{{- end }}

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: clinic-api
+description: CQRS .NET Clinic API with Wolverine — MSSQL, RabbitMQ, NGINX gateway
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - dotnet
+  - cqrs
+  - wolverine
+  - healthcare
+maintainers:
+  - name: Ryan

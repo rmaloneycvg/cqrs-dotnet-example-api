@@ -1,0 +1,87 @@
+{{- if and .Values.security.ring2.enabled .Values.security.ring2.istioGateway.enabled }}
+# ─── Ring 2: Istio Gateway + VirtualService ──────────────────────────────────
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: clinic-api-gateway
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: {{ .Values.nginx.tls.secretName }}
+      hosts:
+        {{- range .Values.security.ring2.istioGateway.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      tls:
+        httpsRedirect: true
+      hosts:
+        {{- range .Values.security.ring2.istioGateway.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: clinic-api-vs
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  hosts:
+    {{- range .Values.security.ring2.istioGateway.hosts }}
+    - {{ . | quote }}
+    {{- end }}
+  gateways:
+    - clinic-api-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: nginx-gateway
+            port:
+              number: {{ .Values.nginx.service.httpsPort }}
+---
+{{- if .Values.security.ring2.istioGateway.jwtValidation.enabled }}
+# ─── Ring 2: JWT Request Authentication ──────────────────────────────────────
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: clinic-api-jwt
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  selector:
+    matchLabels:
+      {{- include "nginx.selectorLabels" . | nindent 6 }}
+  jwtRules:
+    - issuer: {{ .Values.security.ring2.istioGateway.jwtValidation.issuer | quote }}
+      jwksUri: {{ .Values.security.ring2.istioGateway.jwtValidation.jwksUri | quote }}
+      {{- if .Values.security.ring2.istioGateway.jwtValidation.audiences }}
+      audiences:
+        {{- range .Values.security.ring2.istioGateway.jwtValidation.audiences }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      forwardOriginalToken: true
+{{- end }}
+{{- end }}

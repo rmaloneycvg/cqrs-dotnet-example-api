@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    {{- if and .Values.security.ring4.enabled .Values.security.ring4.podSecurityAdmission.enabled }}
+    # Ring 4: Pod Security Admission labels
+    pod-security.kubernetes.io/{{ .Values.security.ring4.podSecurityAdmission.mode }}: {{ .Values.security.ring4.podSecurityAdmission.level }}
+    {{- if ne .Values.security.ring4.podSecurityAdmission.mode "warn" }}
+    pod-security.kubernetes.io/warn: {{ .Values.security.ring4.podSecurityAdmission.level }}
+    {{- end }}
+    {{- if ne .Values.security.ring4.podSecurityAdmission.mode "audit" }}
+    pod-security.kubernetes.io/audit: {{ .Values.security.ring4.podSecurityAdmission.level }}
+    {{- end }}
+    {{- end }}

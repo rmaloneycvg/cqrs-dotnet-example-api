@@ -1,0 +1,204 @@
+{{- if and .Values.security.ring2.enabled .Values.security.ring2.networkPolicies.enabled }}
+# ─── Ring 2: Default Deny All Ingress/Egress ─────────────────────────────────
+{{- if .Values.security.ring2.networkPolicies.defaultDeny }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+{{- end }}
+# ─── Allow: Istio Gateway → NGINX ────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-nginx
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "nginx.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+---
+# ─── Allow: NGINX → Clinic API ───────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-nginx-to-api
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "clinic-api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "nginx.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.clinicApi.port }}
+---
+# ─── Allow: API → MSSQL ──────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-mssql
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "mssql.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "clinic-api.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 1433
+---
+# ─── Allow: API → RabbitMQ ───────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-rabbitmq
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "rabbitmq.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "clinic-api.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 5672
+        - protocol: TCP
+          port: 15672
+---
+# ─── Allow: DNS Egress (all pods need DNS) ───────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# ─── Allow: API Egress to MSSQL + RabbitMQ ───────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "clinic-api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "mssql.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 1433
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "rabbitmq.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 5672
+---
+# ─── Allow: NGINX Egress to API ──────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-nginx-egress
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "nginx.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "clinic-api.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.clinicApi.port }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "rabbitmq.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 15672
+{{- end }}

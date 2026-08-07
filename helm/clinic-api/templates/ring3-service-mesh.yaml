@@ -1,0 +1,43 @@
+{{- if and .Values.security.ring3.enabled .Values.security.ring3.mtls.enabled }}
+# ─── Ring 3: Istio PeerAuthentication (mTLS) ─────────────────────────────────
+# Enforces mutual TLS for all pod-to-pod communication within the namespace.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: namespace-mtls
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "3"
+spec:
+  mtls:
+    mode: {{ .Values.security.ring3.mtls.mode }}
+{{- end }}
+---
+{{- if and .Values.security.ring3.enabled .Values.security.ring3.authorizationPolicies.enabled }}
+# ─── Ring 3: Authorization Policy (L7 Access Control) ────────────────────────
+# Only allow traffic from explicitly listed service accounts.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: clinic-api-authz
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "3"
+spec:
+  action: ALLOW
+  rules:
+    - from:
+        {{- range .Values.security.ring3.authorizationPolicies.allowedSources }}
+        - source:
+            principals:
+              - {{ . | quote }}
+        {{- end }}
+    # Allow health checks from kubelet (no mTLS identity)
+    - to:
+        - operation:
+            paths:
+              - "/health"
+              - "/nginx-health"
+{{- end }}

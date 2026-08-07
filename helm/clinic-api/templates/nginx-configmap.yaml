@@ -1,0 +1,258 @@
+{{- if .Values.nginx.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /tmp/nginx.pid;
+
+    events {
+        worker_connections 1024;
+        multi_accept on;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        server_tokens off;
+
+        log_format main '$remote_addr - $remote_user [$time_local] '
+                        '"$request" $status $body_bytes_sent '
+                        '"$http_referer" "$http_user_agent" '
+                        'rt=$request_time rid=$request_id';
+
+        access_log /var/log/nginx/access.log main;
+
+        # Temp paths (non-root friendly)
+        client_body_temp_path /tmp/client_body;
+        proxy_temp_path /tmp/proxy;
+        fastcgi_temp_path /tmp/fastcgi;
+        uwsgi_temp_path /tmp/uwsgi;
+        scgi_temp_path /tmp/scgi;
+
+        # ─── Rate Limiting Zones ─────────────────────────────────────────
+        limit_req_zone $binary_remote_addr zone=api:10m rate={{ .Values.nginx.rateLimiting.api.rate }};
+        limit_req_zone $binary_remote_addr zone=auth:10m rate={{ .Values.nginx.rateLimiting.auth.rate }};
+        limit_req_zone $binary_remote_addr zone=management:10m rate={{ .Values.nginx.rateLimiting.management.rate }};
+
+        {{- if .Values.nginx.cache.enabled }}
+        # ─── Proxy Cache ─────────────────────────────────────────────────
+        proxy_cache_path /var/cache/nginx/api_cache
+                         levels=1:2
+                         keys_zone=api_cache:10m
+                         max_size={{ .Values.nginx.cache.maxSize }}
+                         inactive=5m
+                         use_temp_path=off;
+        {{- end }}
+
+        # ─── CORS Origin Map ─────────────────────────────────────────────
+        map $http_origin $cors_origin {
+            default "";
+            {{- range .Values.nginx.cors.origins }}
+            "{{ . }}" "{{ . }}";
+            {{- end }}
+        }
+
+        # ─── Upstreams ───────────────────────────────────────────────────
+        upstream clinic_api {
+            server clinic-api-service:{{ .Values.clinicApi.port }};
+            keepalive 16;
+        }
+
+        {{- if .Values.nginx.rabbitmqManagement.enabled }}
+        upstream rabbitmq_management {
+            server rabbitmq-service:15672;
+        }
+        {{- end }}
+
+        # ─── Telemetry: Request ID ───────────────────────────────────────
+        map $http_x_request_id $req_id {
+            default $http_x_request_id;
+            ""      $request_id;
+        }
+
+        # ─── HTTP → HTTPS Redirect ──────────────────────────────────────
+        server {
+            listen 80;
+            server_name _;
+
+            location = /nginx-health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+
+            location / {
+                return 301 https://$host$request_uri;
+            }
+        }
+
+        # ─── HTTPS Server ────────────────────────────────────────────────
+        server {
+            listen 443 ssl;
+            http2 on;
+            server_name _;
+
+            ssl_certificate /etc/nginx/ssl/tls.crt;
+            ssl_certificate_key /etc/nginx/ssl/tls.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers HIGH:!aNULL:!MD5:!RC4;
+            ssl_prefer_server_ciphers on;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 10m;
+
+            # ─── Security Headers ────────────────────────────────────────
+            add_header X-Frame-Options "DENY" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-XSS-Protection "0" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss: https:;" always;
+
+            client_max_body_size 10m;
+
+            location = /nginx-health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+
+            # ─── API Routes ──────────────────────────────────────────────
+            location /api/ {
+                limit_req zone=api burst={{ .Values.nginx.rateLimiting.api.burst }} nodelay;
+                limit_req_status 429;
+
+                if ($request_method = OPTIONS) {
+                    add_header Access-Control-Allow-Origin $cors_origin always;
+                    add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+                    add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Request-ID, X-Correlation-ID" always;
+                    add_header Access-Control-Allow-Credentials "true" always;
+                    add_header Access-Control-Max-Age 86400 always;
+                    return 204;
+                }
+
+                add_header Access-Control-Allow-Origin $cors_origin always;
+                add_header Access-Control-Allow-Credentials "true" always;
+                add_header Access-Control-Expose-Headers "X-Request-ID, X-Correlation-ID" always;
+
+                proxy_pass http://clinic_api/;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Connection "";
+                proxy_set_header X-Request-ID $req_id;
+                proxy_set_header X-Correlation-ID $http_x_correlation_id;
+                add_header X-Request-ID $req_id always;
+
+                proxy_connect_timeout 5s;
+                proxy_send_timeout 30s;
+                proxy_read_timeout 30s;
+
+                {{- if .Values.nginx.cache.enabled }}
+                proxy_cache api_cache;
+                proxy_cache_methods GET HEAD;
+                proxy_cache_valid 200 {{ .Values.nginx.cache.validDuration }};
+                proxy_cache_valid 404 30s;
+                proxy_cache_bypass $http_authorization;
+                proxy_cache_bypass $cookie_session;
+                proxy_no_cache $http_authorization;
+                proxy_no_cache $cookie_session;
+                add_header X-Cache-Status $upstream_cache_status always;
+                {{- end }}
+            }
+
+            # ─── Auth Routes (stricter rate limit) ───────────────────────
+            location /api/auth/ {
+                limit_req zone=auth burst={{ .Values.nginx.rateLimiting.auth.burst }} nodelay;
+                limit_req_status 429;
+
+                if ($request_method = OPTIONS) {
+                    add_header Access-Control-Allow-Origin $cors_origin always;
+                    add_header Access-Control-Allow-Methods "POST, OPTIONS" always;
+                    add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+                    add_header Access-Control-Allow-Credentials "true" always;
+                    add_header Access-Control-Max-Age 86400 always;
+                    return 204;
+                }
+
+                add_header Access-Control-Allow-Origin $cors_origin always;
+                add_header Access-Control-Allow-Credentials "true" always;
+
+                proxy_pass http://clinic_api/auth/;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Connection "";
+                proxy_set_header X-Request-ID $req_id;
+                proxy_set_header X-Correlation-ID $http_x_correlation_id;
+                proxy_cache off;
+                add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+                add_header X-Request-ID $req_id always;
+            }
+
+            # ─── Health Endpoint ─────────────────────────────────────────
+            location = /health {
+                proxy_pass http://clinic_api/health;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header Connection "";
+                proxy_cache off;
+                access_log off;
+            }
+
+            {{- if .Values.nginx.rabbitmqManagement.enabled }}
+            # ─── RabbitMQ Management UI ──────────────────────────────────
+            location /rabbitmq/ {
+                limit_req zone=management burst={{ .Values.nginx.rateLimiting.management.burst }} nodelay;
+
+                proxy_pass http://rabbitmq_management/;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Connection "";
+                proxy_cache off;
+            }
+            {{- end }}
+
+            # ─── WebSocket Support ───────────────────────────────────────
+            location /ws/ {
+                proxy_pass http://clinic_api/ws/;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Request-ID $req_id;
+                proxy_set_header X-Correlation-ID $http_x_correlation_id;
+                proxy_read_timeout 3600s;
+                proxy_send_timeout 3600s;
+                proxy_cache off;
+            }
+
+            # ─── Catch-All ───────────────────────────────────────────────
+            location / {
+                return 404 '{"error": "Not Found"}\n';
+                add_header Content-Type application/json always;
+            }
+        }
+    }
+{{- end }}

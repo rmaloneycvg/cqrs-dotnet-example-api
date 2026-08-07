@@ -1,0 +1,100 @@
+# ─── Dev Environment Overrides ────────────────────────────────────────────────
+# Local development via Tilt. Single replicas, relaxed limits, self-signed TLS.
+
+global:
+  namespace: clinic-api
+
+clinicApi:
+  replicaCount: 1
+  image:
+    repository: clinic-api-image
+    tag: "latest"
+    pullPolicy: Never  # Tilt builds locally
+  env:
+    ASPNETCORE_ENVIRONMENT: Development
+    ASPNETCORE_URLS: "http://+:5000"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+nginx:
+  replicaCount: 1
+  image:
+    repository: nginx-gateway-image
+    tag: "latest"
+    pullPolicy: Never
+  tls:
+    mode: self-signed
+  cors:
+    origins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+      - "https://localhost"
+  rateLimiting:
+    api:
+      rate: "100r/s"
+      burst: 50     # More lenient for dev testing
+    auth:
+      rate: "30r/s"  # Less strict for dev
+      burst: 10
+  rabbitmqManagement:
+    enabled: true
+
+mssql:
+  enabled: true
+  persistence:
+    enabled: false  # Ephemeral in dev
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+rabbitmq:
+  enabled: true
+  persistence:
+    enabled: false  # Ephemeral in dev
+
+dbMigrate:
+  enabled: true
+  helmHook: false  # Tilt manages this as a manual trigger
+
+# ─── Secrets (created in-cluster for dev) ─────────────────────────────────────
+secrets:
+  create: true
+  data:
+    SA_PASSWORD: "YourStrong@Passw0rd"
+    RABBITMQ_DEFAULT_PASS: "guest"
+    ConnectionStrings__ClinicDb: "Server=mssql-service,1433;Database=ClinicDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;"
+    ConnectionStrings__RabbitMq: "amqp://guest:guest@rabbitmq-service:5672"
+
+# ─── Security Rings (Dev: minimal — no Istio, no WAF) ────────────────────────
+security:
+  ring1:
+    enabled: false
+  ring2:
+    enabled: false
+    networkPolicies:
+      enabled: false  # No network policies locally; all pods talk freely
+  ring3:
+    enabled: false    # No Istio sidecar in dev
+  ring4:
+    enabled: true
+    podSecurityAdmission:
+      enabled: true
+      level: baseline   # Allow debugging tools, privileged not needed
+      mode: warn        # Warn only, don't block dev workflows
+    rbac:
+      enabled: true
+      createServiceAccount: true
+      serviceAccountName: clinic-api
+    secretEncryption:
+      enabled: false   # No KMS locally
+  ring5:
+    enabled: false     # No TDE or audit in dev
