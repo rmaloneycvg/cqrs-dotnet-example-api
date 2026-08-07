@@ -1,9 +1,5 @@
-using ClinicApi.Domain.Entities;
-using ClinicApi.Domain.Events;
-using ClinicApi.Domain.ValueObjects;
 using ClinicApi.Features.Patients.Commands;
 using ClinicApi.Features.Patients.Queries;
-using ClinicApi.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.Http;
 
@@ -11,32 +7,16 @@ namespace ClinicApi.Features.Patients.Endpoints;
 
 /// <summary>
 /// HTTP endpoints for the Patients feature using WolverineFx.Http.
-/// Each method routes through Wolverine's handler pipeline
-/// (including FluentValidation middleware, logging middleware, etc.)
+/// Thin delegation layer — all business logic lives in handlers.
+/// Routes through Wolverine's handler pipeline (FluentValidation, logging, etc.)
 /// </summary>
 public static class PatientEndpoints
 {
     [WolverinePost("/api/patients")]
-    public static async Task<CreatePatientResponse> CreatePatient(
-        CreatePatient command, ClinicDbContext db, IMessageBus bus, CancellationToken ct)
+    public static async Task<CreatePatientResponse> CreatePatient(CreatePatient command, IMessageBus bus)
     {
-        var patient = new Patient
-        {
-            FirstName = command.FirstName,
-            LastName = command.LastName,
-            DateOfBirth = command.DateOfBirth,
-            Email = command.Email,
-            Phone = new PhoneNumber(command.PhoneNumber),
-            Address = new Address(command.Street, command.City, command.State, command.ZipCode),
-            ExternalId = command.ExternalId
-        };
-
-        db.Patients.Add(patient);
-        await db.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(new PatientCreated(patient.Id, patient.FirstName, patient.LastName, patient.Email));
-
-        return new CreatePatientResponse(patient.Id, patient.FullName, patient.Email);
+        var response = await bus.InvokeAsync<CreatePatientResponse>(command);
+        return response;
     }
 
     [WolverineGet("/api/patients/{id}")]
