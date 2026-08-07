@@ -18,14 +18,11 @@ k8s_yaml(helm(
 
 # ─── Docker Builds ───────────────────────────────────────────────────────────
 
-# NGINX Gateway
+# NGINX Gateway (no live_update — config changes require full rebuild)
 docker_build(
     'nginx-gateway-image',
     context='.',
     dockerfile='docker/nginx/Dockerfile',
-    live_update=[
-        fall_back_on(['docker/nginx/Dockerfile']),
-    ],
 )
 
 # Clinic API with live_update for hot reload
@@ -35,10 +32,10 @@ docker_build(
     dockerfile='docker/api/Dockerfile',
     target='development',
     live_update=[
+        fall_back_on(['./src/ClinicApi/ClinicApi.csproj']),
         sync('./src', '/src/src'),
         sync('./global.json', '/src/global.json'),
         sync('./Directory.Build.props', '/src/Directory.Build.props'),
-        fall_back_on(['./src/ClinicApi/ClinicApi.csproj']),
     ],
 )
 
