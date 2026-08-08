@@ -1,6 +1,7 @@
 using ClinicApi.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
@@ -9,6 +10,25 @@ using Wolverine.Http;
 using Wolverine.Http.FluentValidation;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
+
+// ─── Migration CLI ───────────────────────────────────────────────────────────
+// Usage: dotnet ClinicApi.dll --migrate
+// Applies pending EF Core migrations and exits. Used by the db-migrate k8s Job.
+if (args.Contains("--migrate"))
+{
+    var migrateBuilder = WebApplication.CreateBuilder(args);
+    var cs = migrateBuilder.Configuration.GetConnectionString("ClinicDb")
+        ?? throw new InvalidOperationException("ConnectionStrings:ClinicDb is required for migration.");
+    migrateBuilder.Services.AddDbContext<ClinicDbContext>(options => options.UseSqlServer(cs));
+    var migrateApp = migrateBuilder.Build();
+    using var scope = migrateApp.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ClinicDbContext>();
+    await db.Database.MigrateAsync();
+    Console.WriteLine("Database migration completed successfully.");
+    return;
+}
+
+// ─── Application Builder ─────────────────────────────────────────────────────
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -121,10 +141,11 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseHealthChecks("/health");
 
-// OpenAPI (development only)
+// OpenAPI + Scalar (development only)
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 // Wolverine HTTP endpoints
