@@ -20,16 +20,18 @@ tests/
 # Environment & secrets
 .env
 .env.local
+.env.dev
+.env.staging
+.env.prod
 .env.example
 *.pfx
 *.pem
 *.key
 
-# Docker (avoid recursive context)
-docker/
-docker-compose.override.yml
+# Docker (avoid including unrelated docker contexts)
+docker/mssql/
+docker/rabbitmq/
 .dockerignore
-Dockerfile*
 
 # Helm & Tilt
 helm/

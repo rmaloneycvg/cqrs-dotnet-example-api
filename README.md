@@ -97,6 +97,20 @@ flowchart TD
 - [Tilt](https://tilt.dev/) (for local orchestration)
 - [Helm 3](https://helm.sh/docs/intro/install/) (chart rendering and deployment)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) (for k8s cluster interaction)
+- [dotnet-ef](https://learn.microsoft.com/en-us/ef/core/cli/dotnet) (EF Core migrations)
+
+### One-Time Setup
+
+```bash
+# Install EF Core global tool (required for migrations)
+dotnet tool install --global dotnet-ef
+
+# Ensure .NET tools are on your PATH (add to ~/.zshrc or ~/.bashrc)
+export PATH="$PATH:$HOME/.dotnet/tools"
+
+# Copy the environment template for local secrets
+cp .env.example .env.dev
+```
 
 ## Quick Start
 
@@ -106,6 +120,9 @@ cd cqrs-dotnet-example-api
 
 # Start all services (MSSQL, RabbitMQ, API) via Helm + Tilt
 tilt up
+
+# Run database migration (manual trigger in Tilt UI, or:)
+make migrate-tilt
 
 # Or build and run tests without Tilt
 dotnet build

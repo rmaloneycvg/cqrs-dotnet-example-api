@@ -1,4 +1,4 @@
-.PHONY: up down build test test-unit test-integration test-performance migrate restore clean
+.PHONY: up down build test test-unit test-integration test-performance migrate restore clean help
 
 # ─── Development ──────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ up-telemetry:
 down:
 	tilt down
 
-## Stop and remove volumes
+## Stop and remove volumes (full reset)
 down-clean:
 	tilt down --delete-namespaces
 
@@ -40,7 +40,7 @@ clean:
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 
-## Run EF Core migrations
+## Run EF Core migrations (via dotnet ef locally, or --migrate flag in container)
 migrate:
 	dotnet ef database update --project src/ClinicApi/ClinicApi.csproj
 
@@ -49,9 +49,13 @@ migration-add:
 	@read -p "Migration name: " name; \
 	dotnet ef migrations add $$name --project src/ClinicApi/ClinicApi.csproj --output-dir Infrastructure/Persistence/Migrations
 
-## Trigger migration via Tilt
+## Trigger migration via Tilt (manual k8s Job)
 migrate-tilt:
 	tilt trigger 8-db-migrate
+
+## Run migration via the container image (same as k8s job)
+migrate-container:
+	docker run --rm --env-file .env.dev clinic-api:local --migrate
 
 # ─── Testing ──────────────────────────────────────────────────────────────────
 
@@ -81,7 +85,7 @@ test-coverage:
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
-## Build Docker image locally
+## Build Docker image locally (production stage)
 docker-build:
 	docker build -f docker/api/Dockerfile -t clinic-api:local .
 
@@ -91,7 +95,7 @@ docker-run:
 
 # ─── Helm ─────────────────────────────────────────────────────────────────────
 
-## Lint the Helm chart
+## Lint the Helm chart against all environments
 helm-lint:
 	helm lint ./helm/clinic-api -f ./helm/clinic-api/values-dev.yaml
 	helm lint ./helm/clinic-api -f ./helm/clinic-api/values-staging.yaml
@@ -142,9 +146,6 @@ rabbitmq-ui:
 health:
 	@curl -s http://localhost:5000/health | jq . 2>/dev/null || curl -s http://localhost:5000/health
 
-## Help
+## Show available targets with descriptions
 help:
-	@echo "Available targets:"
-	@grep -E '^## ' Makefile | sed 's/## /  /'
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:' Makefile | grep -v '.PHONY' | sed 's/:.*//' | sort | xargs -I {} echo "  make {}"
+	@awk 'BEGIN {FS = ":"} /^## /{desc=substr($$0,4); next} /^[a-zA-Z_-]+:/{if (desc) {printf "  \033[36m%-22s\033[0m %s\n", $$1, desc; desc=""}}' $(MAKEFILE_LIST)

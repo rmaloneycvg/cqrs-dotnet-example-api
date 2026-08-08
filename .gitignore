@@ -1,61 +1,36 @@
-# Build outputs
+## Build
 **/bin/
 **/obj/
 **/publish/
 
-# IDE
+## IDE
 .vs/
 .vscode/
 .idea/
 *.user
 *.suo
-*.DotSettings.user
 
-# Environment
-.env.local
+## Environment & secrets (keep .env.example as template)
 .env
+.env.local
+.env.dev
+.env.staging
+.env.prod
 
-# Coverage & test results
+## Coverage & reports
 coverage/
 TestResults/
-*.trx
-
-# OS
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-# Docker
-docker-compose.override.yml
-
-# NuGet
-*.nupkg
-packages/
-
-# Performance reports
 BenchmarkDotNet.Artifacts/
 nbomber_reports/
 
-# Tilt
+## OS
+.DS_Store
+Thumbs.db
+
+## Tilt
 .tilt-dev/
 tilt_modules/
 
-# Helm
-helm/clinic-api/charts/
-
-# Secrets & certs
-*.pfx
-*.pem
-*.key
-docker/nginx/certs/
-
-# Logs
-logs/
-*.log
-
-# Terraform (if added later)
+## Terraform
 **/.terraform/
-*.tfstate
-*.tfstate.backup
-*.tfvars
-!*.tfvars.example
+*.tfstate*
