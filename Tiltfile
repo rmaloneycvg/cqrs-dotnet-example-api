@@ -1,5 +1,5 @@
 # Tiltfile for CQRS .NET Example API
-# Orchestrates: NGINX, MSSQL, RabbitMQ, ClinicApi with live-reload
+# Orchestrates: NGINX Gateway, MSSQL, RabbitMQ, ClinicApi with live-reload
 # Single source of truth: helm/clinic-api/ chart with values-dev.yaml
 
 # ─── Safety ──────────────────────────────────────────────────────────────────
@@ -27,13 +27,42 @@ update_settings(
     suppress_unused_image_warnings=['nginx-gateway-image'],
 )
 
+# ─── Secrets (loaded from .env.dev) ──────────────────────────────────────────
+# Secrets are loaded from .env.dev (gitignored) and injected into Helm values.
+# Copy .env.example to .env.dev and fill in values for local development.
+
+def read_env_file(path):
+    """Parse a .env file into a dict, skipping comments and empty lines."""
+    result = {}
+    for line in str(read_file(path)).strip().split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#'):
+            key, _, value = line.partition('=')
+            if key and value:
+                result[key.strip()] = value.strip()
+    return result
+
+_secrets = read_env_file('.env.dev')
+
 # ─── Helm Chart (single source of k8s manifests) ─────────────────────────────
+
+# Helm --set treats commas as list separators. Connection strings contain commas
+# (e.g., "Server=host,1433") so they must be escaped for Helm to pass them through.
+def helm_escape(value):
+    """Escape special characters for Helm --set values."""
+    return value.replace(',', '\\,')
 
 k8s_yaml(helm(
     './helm/clinic-api',
     name='clinic-api',
     namespace='clinic-api',
     values=['./helm/clinic-api/values-dev.yaml'],
+    set=[
+        'secrets.data.SA_PASSWORD=' + helm_escape(_secrets.get('SA_PASSWORD', '')),
+        'secrets.data.RABBITMQ_DEFAULT_PASS=' + helm_escape(_secrets.get('RABBITMQ_DEFAULT_PASS', '')),
+        'secrets.data.ConnectionStrings__ClinicDb=' + helm_escape(_secrets.get('ConnectionStrings__ClinicDb', '')),
+        'secrets.data.ConnectionStrings__RabbitMq=' + helm_escape(_secrets.get('ConnectionStrings__RabbitMq', '')),
+    ],
 ))
 
 # ─── Docker Builds ───────────────────────────────────────────────────────────
@@ -135,7 +164,7 @@ k8s_resource(
     resource_deps=['4-mssql', '5-rabbitmq'],
     links=[
         link('http://localhost:5000/health', 'Health Check'),
-        link('http://localhost:5000/swagger', 'Swagger UI'),
+        link('http://localhost:5000/scalar/v1', 'Scalar API Docs'),
     ],
 )
 
@@ -145,8 +174,8 @@ k8s_resource(
     new_name='7-nginx-gateway',
     labels=['gateway'],
     port_forwards=[
-        port_forward(8443, 443, name='HTTPS'),
-        port_forward(8080, 80, name='HTTP'),
+        port_forward(8443, 8443, name='HTTPS'),
+        port_forward(8080, 8080, name='HTTP'),
     ],
     resource_deps=['6-clinic-api'],
     objects=['nginx-config:configmap'],
