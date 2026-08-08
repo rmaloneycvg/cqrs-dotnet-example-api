@@ -68,6 +68,52 @@ spec:
             initialDelaySeconds: {{ .Values.clinicApi.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.clinicApi.livenessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.clinicApi.livenessProbe.timeoutSeconds }}
+          {{- if and .Values.security.ring5.enabled .Values.security.ring5.vault.enabled }}
+          volumeMounts:
+            - name: vault-secrets
+              mountPath: /vault/secrets
+              readOnly: true
+          {{- end }}
+        {{- if and .Values.security.ring5.enabled .Values.security.ring5.vault.enabled }}
+        # Vault Agent sidecar — injects CMK credentials for Always Encrypted
+        - name: vault-agent
+          image: {{ .Values.security.ring5.vault.image | default "hashicorp/vault:1.17" }}
+          args: ["agent", "-config=/vault/config/vault-agent-config.hcl"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+          volumeMounts:
+            - name: vault-config
+              mountPath: /vault/config
+            - name: vault-secrets
+              mountPath: /vault/secrets
+            - name: vault-token
+              mountPath: /vault/token
+        {{- end }}
+      {{- if and .Values.security.ring5.enabled .Values.security.ring5.vault.enabled }}
+      volumes:
+        - name: vault-config
+          configMap:
+            name: vault-agent-config
+        - name: vault-secrets
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: vault-token
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

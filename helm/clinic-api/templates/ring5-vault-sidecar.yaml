@@ -1,0 +1,60 @@
+{{- if and .Values.security.ring5.enabled .Values.security.ring5.vault.enabled }}
+# ─── Vault Agent Sidecar Configuration ────────────────────────────────────────
+# Injects Column Master Key (CMK) credentials into the clinic-api pod.
+# The SQL Client uses these credentials to access the CMK in Azure Key Vault
+# for Always Encrypted column decryption.
+#
+# Flow:
+#   1. Vault Agent authenticates with Kubernetes auth method
+#   2. Reads the CMK access secret from Vault
+#   3. Renders credentials to a shared volume (tmpfs)
+#   4. SQL Client reads credentials via Azure.Identity or env vars
+#   5. SQL Client uses CMK to decrypt CEK, then decrypts PHI columns
+#
+# This keeps CMK credentials out of Kubernetes Secrets and environment variables.
+# Vault provides:
+#   - Audit trail of every key access
+#   - Dynamic short-lived credentials
+#   - Automatic rotation without pod restart
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-agent-config
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+data:
+  vault-agent-config.hcl: |
+    exit_after_auth = false
+
+    auto_auth {
+      method "kubernetes" {
+        mount_path = "auth/kubernetes"
+        config = {
+          role = "clinic-api"
+        }
+      }
+
+      sink "file" {
+        config = {
+          path = "/vault/token"
+        }
+      }
+    }
+
+    template {
+      source      = "/vault/templates/cmk-credentials.ctmpl"
+      destination = "/vault/secrets/cmk-credentials.json"
+      perms       = 0400
+    }
+
+  cmk-credentials.ctmpl: |
+    {{ "{{" }}- with secret "{{ .Values.security.ring5.vault.secretPath }}" {{ "}}" }}
+    {
+      "tenantId": "{{ "{{" }} .Data.data.tenant_id {{ "}}" }}",
+      "clientId": "{{ "{{" }} .Data.data.client_id {{ "}}" }}",
+      "clientSecret": "{{ "{{" }} .Data.data.client_secret {{ "}}" }}"
+    }
+    {{ "{{" }}- end {{ "}}" }}
+{{- end }}

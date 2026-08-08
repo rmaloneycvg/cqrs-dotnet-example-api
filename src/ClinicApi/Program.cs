@@ -1,6 +1,10 @@
 using ClinicApi.Infrastructure.Persistence;
+using ClinicApi.Infrastructure.Security;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using Scalar.AspNetCore;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
@@ -49,6 +53,15 @@ builder.Services.AddDbContextWithWolverineIntegration<ClinicDbContext>(options =
     });
 });
 
+// HIPAA §164.312(a)(2)(iv): PHI encryption at rest
+// Handled by SQL Server Always Encrypted — transparent to application code.
+// Connection string includes "Column Encryption Setting=Enabled" which tells
+// Microsoft.Data.SqlClient to decrypt PHI columns automatically.
+// CMK credentials injected via Vault sidecar in staging/prod.
+//
+// HIPAA §164.312(b): Audit controls
+builder.Services.AddSingleton<IPhiAuditLogger, PhiAuditLogger>();
+
 
 
 // Dapper connection factory (read-side)
@@ -63,6 +76,37 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>(ServiceLifetime.Si
 // Health checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ClinicDbContext>("mssql");
+
+// OpenTelemetry (tracing + metrics) — enabled when OTEL_EXPORTER_OTLP_ENDPOINT is set
+var otlpEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+
+if (otlpEndpoint is not null)
+{
+    builder.Services.AddOpenTelemetry()
+        .WithTracing(tracing =>
+        {
+            tracing
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddSqlClientInstrumentation(options => options.SetDbStatementForText = true)
+                .AddSource("Wolverine")
+                .AddOtlpExporter();
+        })
+        .WithMetrics(metrics =>
+        {
+            metrics
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation()
+                .AddMeter("Wolverine")
+                .AddOtlpExporter();
+        });
+
+    builder.Logging.AddOpenTelemetry(logging =>
+    {
+        logging.AddOtlpExporter();
+    });
+}
 
 // Global exception handling with ProblemDetails
 builder.Services.AddProblemDetails();

@@ -223,8 +223,17 @@ security:
     enabled: false
     encryptionAtRest:
       enabled: false
-      # MSSQL TDE or managed DB encryption (handled by cloud provider)
+      # SQL Server Always Encrypted for PHI columns.
+      # Connection string must include: Column Encryption Setting=Enabled
+      # CMK stored in Azure Key Vault, credentials injected by Vault sidecar.
+      alwaysEncrypted: false
+      # MSSQL TDE (managed DB only — Azure SQL enables by default)
       mssqlTDE: false
+    vault:
+      enabled: false
+      image: "hashicorp/vault:1.17"
+      # Vault secret path containing CMK access credentials
+      secretPath: "secret/data/clinic-api/cmk-credentials"
     auditLogging:
       enabled: false
       # Immutable audit log sink
