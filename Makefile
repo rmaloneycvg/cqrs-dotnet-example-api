@@ -51,7 +51,7 @@ migration-add:
 
 ## Trigger migration via Tilt
 migrate-tilt:
-	tilt trigger db-migrate
+	tilt trigger 8-db-migrate
 
 # ─── Testing ──────────────────────────────────────────────────────────────────
 
