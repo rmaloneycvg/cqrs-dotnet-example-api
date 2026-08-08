@@ -30,7 +30,16 @@ public static class GetPatientBillingHistoryHandler
         const string sql = """
             SELECT Id, InvoiceNumber, Amount, PaidAmount,
                    (Amount - PaidAmount) AS OutstandingBalance,
-                   Status, IssuedAt, DueDate, Description
+                   CASE Status
+                       WHEN 0 THEN 'Draft'
+                       WHEN 1 THEN 'Issued'
+                       WHEN 2 THEN 'Paid'
+                       WHEN 3 THEN 'Overdue'
+                       WHEN 4 THEN 'PartiallyPaid'
+                       WHEN 5 THEN 'Cancelled'
+                       ELSE 'Unknown'
+                   END AS Status,
+                   IssuedAt, DueDate, Description
             FROM Invoices
             WHERE PatientId = @PatientId
             ORDER BY IssuedAt DESC
