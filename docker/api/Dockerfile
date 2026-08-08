@@ -39,12 +39,25 @@ ENTRYPOINT ["dotnet", "ClinicApi.dll"]
 
 # Stage 5: Development (extends runtime with hot-reload support)
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS development
-WORKDIR /app
+WORKDIR /src
+
+# Copy source and restore dependencies (before user switch for permissions)
+COPY global.json Directory.Build.props ./
+COPY src/ClinicApi/ClinicApi.csproj src/ClinicApi/
+RUN dotnet restore src/ClinicApi/ClinicApi.csproj
+COPY src/ src/
+
+# Security: non-root user (matching k8s runAsNonRoot constraint)
+RUN groupadd --system --gid 10001 appgroup && useradd --system --uid 10001 --gid appgroup --home-dir /home/appuser --create-home appuser
+RUN chown -R 10001:10001 /src /home/appuser
+USER 10001
 
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Development
 ENV DOTNET_USE_POLLING_FILE_WATCHER=1
+ENV DOTNET_CLI_HOME=/home/appuser
+ENV HOME=/home/appuser
 
 EXPOSE 5000
 
-ENTRYPOINT ["dotnet", "watch", "run", "--project", "/src/src/ClinicApi/ClinicApi.csproj", "--urls", "http://+:5000"]
+ENTRYPOINT ["dotnet", "watch", "run", "--project", "src/ClinicApi/ClinicApi.csproj", "--urls", "http://+:5000"]
