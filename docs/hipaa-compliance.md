@@ -174,10 +174,26 @@ az keyvault key create --vault-name clinic-keyvault --name ClinicPhiMasterKey --
 
 ### 2. Run Always Encrypted Migration
 
-Use SSMS Always Encrypted Wizard or the provided SQL script:
+Use the provided PowerShell script (requires `SqlServer` module):
+
+```bash
+# Azure Key Vault (staging/prod)
+./scripts/setup-always-encrypted.ps1 \
+  -ServerInstance "mssql-service,1433" \
+  -Database "ClinicDb" \
+  -KeyVaultUrl "https://clinic-keyvault.vault.azure.net" \
+  -KeyName "ClinicPhiMasterKey" \
+  -SqlPassword "$SA_PASSWORD"
+
+# Local development (certificate store)
+./scripts/setup-always-encrypted.ps1 \
+  -ServerInstance "localhost,1433" \
+  -Database "ClinicDb" \
+  -UseCertStore \
+  -SqlPassword "YourStrong@Passw0rd"
 ```
-src/ClinicApi/Infrastructure/Persistence/Migrations/AlwaysEncrypted_PHI_Setup.sql
-```
+
+Reference SQL (for manual SSMS setup): `docs/always-encrypted-setup.sql`
 
 ### 3. Configure Vault
 

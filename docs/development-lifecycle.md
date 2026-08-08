@@ -709,6 +709,10 @@ curl http://localhost:5000/health
 # Through NGINX gateway (full production-like path)
 curl -k https://localhost:8443/api/patients | jq .
 
+# Test permission boundaries (override dev auth role)
+curl -H "X-Dev-Role: nurse" http://localhost:5000/api/patients/batch-import
+curl -H "X-Dev-Role: admin" http://localhost:5000/api/patients/purge-expired
+
 make health
 ```
 

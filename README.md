@@ -98,6 +98,8 @@ flowchart TD
 | **FluentValidation (all features)** | Input validation on all commands | `Features/*/Validators/` |
 | **Response Compression** | gzip/brotli for list endpoints | `Program.cs` |
 | **CI/CD Pipeline** | GitHub Actions (build, test, helm, docker) | `.github/workflows/ci.yml` |
+| **Soft Delete** | Patient deactivation via DELETE endpoint | `Features/Patients/Commands/` |
+| **PHI Audit Middleware** | Automatic Wolverine middleware (no per-handler code) | `Infrastructure/Middleware/PhiAuditMiddleware` |
 
 ## Prerequisites
 
@@ -177,6 +179,8 @@ cqrs-dotnet-example-api/
 │   ├── testing-architecture.md      # Comprehensive testing guide
 │   ├── development-lifecycle.md     # Adding endpoints, deployment flows
 │   └── hipaa-compliance.md          # Encryption, audit, key management
+├── scripts/
+│   └── setup-always-encrypted.ps1   # Executable PHI encryption setup
 ├── .github/workflows/ci.yml         # GitHub Actions CI pipeline
 ├── Tiltfile                         # Tilt orchestration (uses helm chart)
 ├── Makefile                         # Common development commands
