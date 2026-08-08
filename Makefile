@@ -59,7 +59,7 @@ migration-add:
 migrate-tilt:
 	tilt trigger 8-db-migrate
 
-## Run migration via the container image (same as k8s job)
+## Run migration via the container image (requires: make docker-build)
 migrate-container:
 	docker run --rm --env-file .env.dev clinic-api:local --migrate
 
@@ -100,6 +100,8 @@ docker-run:
 	docker run -p 5000:5000 --env-file .env.dev clinic-api:local
 
 # ─── Helm ─────────────────────────────────────────────────────────────────────
+# NOTE: helm-lint for dev may warn about empty secrets.data (populated by Tilt at runtime).
+# Use helm-template-* targets for full validation, or pass --set secrets.data.SA_PASSWORD=x etc.
 
 ## Lint the Helm chart against all environments
 helm-lint:
@@ -119,9 +121,9 @@ helm-template-staging:
 helm-template-prod:
 	helm template clinic-api ./helm/clinic-api -f ./helm/clinic-api/values-prod.yaml
 
-## Install chart (dev)
+## Install chart (dev) — prefer 'make up' (Tilt handles secrets injection)
 helm-install-dev:
-	helm upgrade --install clinic-api ./helm/clinic-api -f ./helm/clinic-api/values-dev.yaml
+	helm upgrade --install clinic-api ./helm/clinic-api -f ./helm/clinic-api/values-dev.yaml -n clinic-api --create-namespace
 
 ## Install chart (staging)
 helm-install-staging:
