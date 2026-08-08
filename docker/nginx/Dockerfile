@@ -14,6 +14,9 @@ RUN apk add --no-cache openssl && \
 # Create temp dirs for non-root operation
 RUN mkdir -p /tmp/client_body /tmp/proxy /tmp/fastcgi /tmp/uwsgi /tmp/scgi && \
     mkdir -p /var/cache/nginx/api_cache && \
-    chown -R nginx:nginx /tmp /var/cache/nginx /var/log/nginx
+    chown -R nginx:nginx /tmp /var/cache/nginx /var/log/nginx /etc/nginx/ssl
 
-EXPOSE 80 443
+EXPOSE 8080 8443
+
+# Security: run as non-root (matches k8s Pod Security Admission restricted profile)
+USER nginx

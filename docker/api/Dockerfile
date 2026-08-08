@@ -22,9 +22,10 @@ RUN dotnet publish src/ClinicApi/ClinicApi.csproj -c Release -o /app/publish --n
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Security: non-root user
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-USER appuser
+# Security: non-root user with explicit UID/GID for k8s runAsNonRoot compatibility
+RUN addgroup --system --gid 10001 appgroup && \
+    adduser --system --uid 10001 --ingroup appgroup --home /home/appuser appuser
+USER 10001
 
 COPY --from=publish /app/publish .
 
@@ -32,8 +33,9 @@ ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 5000
 
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
-  CMD curl -f http://localhost:5000/health || exit 1
+# NOTE: No HEALTHCHECK here — Kubernetes readiness/liveness/startup probes handle
+# health checking in all deployment environments. For standalone docker run, use:
+#   curl http://localhost:5000/health
 
 ENTRYPOINT ["dotnet", "ClinicApi.dll"]
 
@@ -47,8 +49,10 @@ COPY src/ClinicApi/ClinicApi.csproj src/ClinicApi/
 RUN dotnet restore src/ClinicApi/ClinicApi.csproj
 COPY src/ src/
 
-# Security: non-root user (matching k8s runAsNonRoot constraint)
-RUN groupadd --system --gid 10001 appgroup && useradd --system --uid 10001 --gid appgroup --home-dir /home/appuser --create-home appuser
+# Security: non-root user (matching runtime stage UID/GID for consistency)
+# SDK image uses Debian with groupadd/useradd (not addgroup/adduser)
+RUN groupadd --system --gid 10001 appgroup && \
+    useradd --system --uid 10001 --gid appgroup --home-dir /home/appuser --create-home appuser
 RUN chown -R 10001:10001 /src /home/appuser
 USER 10001
 
