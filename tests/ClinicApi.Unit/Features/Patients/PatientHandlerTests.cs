@@ -1,4 +1,3 @@
-using ClinicApi.Infrastructure.Security;
 using ClinicApi.Domain.Entities;
 using ClinicApi.Domain.Events;
 using ClinicApi.Features.Patients.Commands;
@@ -6,7 +5,6 @@ using ClinicApi.Infrastructure.Persistence;
 using ClinicApi.Unit.Shared;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using NSubstitute;
 
 namespace ClinicApi.Unit.Features.Patients;
 
@@ -37,7 +35,7 @@ public class CreatePatientHandlerTests : IDisposable
         var command = PatientBuilders.ValidCreatePatientCommand();
 
         // Act
-        var (response, @event) = await CreatePatientHandler.Handle(command, _db, Substitute.For<IPhiAuditLogger>(), CancellationToken.None);
+        var (response, @event) = await CreatePatientHandler.Handle(command, _db, CancellationToken.None);
 
         // Assert
         response.Should().NotBeNull();
@@ -53,7 +51,7 @@ public class CreatePatientHandlerTests : IDisposable
         var command = PatientBuilders.ValidCreatePatientCommand();
 
         // Act
-        await CreatePatientHandler.Handle(command, _db, Substitute.For<IPhiAuditLogger>(), CancellationToken.None);
+        await CreatePatientHandler.Handle(command, _db, CancellationToken.None);
 
         // Assert
         var patient = await _db.Patients.FirstOrDefaultAsync();
@@ -75,7 +73,7 @@ public class CreatePatientHandlerTests : IDisposable
         var command = PatientBuilders.ValidCreatePatientCommand();
 
         // Act
-        var (_, @event) = await CreatePatientHandler.Handle(command, _db, Substitute.For<IPhiAuditLogger>(), CancellationToken.None);
+        var (_, @event) = await CreatePatientHandler.Handle(command, _db, CancellationToken.None);
 
         // Assert — Wolverine cascades the event automatically from the return tuple
         @event.Should().NotBeNull();
@@ -92,7 +90,7 @@ public class CreatePatientHandlerTests : IDisposable
         var command = PatientBuilders.ValidCreatePatientCommand();
 
         // Act
-        await CreatePatientHandler.Handle(command, _db, Substitute.For<IPhiAuditLogger>(), CancellationToken.None);
+        await CreatePatientHandler.Handle(command, _db, CancellationToken.None);
 
         // Assert
         var patient = await _db.Patients.FirstOrDefaultAsync();
@@ -106,7 +104,7 @@ public class CreatePatientHandlerTests : IDisposable
         var command = PatientBuilders.ValidCreatePatientCommand();
 
         // Act
-        await CreatePatientHandler.Handle(command, _db, Substitute.For<IPhiAuditLogger>(), CancellationToken.None);
+        await CreatePatientHandler.Handle(command, _db, CancellationToken.None);
 
         // Assert
         var patient = await _db.Patients.FirstOrDefaultAsync();
@@ -142,7 +140,7 @@ public class UpdatePatientHandlerTests : IDisposable
             "New Street", "New City", "CA", "90210");
 
         // Act
-        var @event = await UpdatePatientHandler.Handle(command, _db, Substitute.For<IPhiAuditLogger>(), CancellationToken.None);
+        var @event = await UpdatePatientHandler.Handle(command, _db, CancellationToken.None);
 
         // Assert
         var updated = await _db.Patients.FindAsync(patient.Id);
@@ -161,7 +159,7 @@ public class UpdatePatientHandlerTests : IDisposable
             "St", "City", "ST", "12345");
 
         // Act & Assert
-        var act = () => UpdatePatientHandler.Handle(command, _db, Substitute.For<IPhiAuditLogger>(), CancellationToken.None);
+        var act = () => UpdatePatientHandler.Handle(command, _db, CancellationToken.None);
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*not found*");
     }

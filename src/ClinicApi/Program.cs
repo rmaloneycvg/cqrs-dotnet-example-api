@@ -1,13 +1,8 @@
+using ClinicApi.Infrastructure;
 using ClinicApi.Infrastructure.Persistence;
-using ClinicApi.Infrastructure.Security;
-using FluentValidation;
 using Microsoft.EntityFrameworkCore;
-using OpenTelemetry.Logs;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Trace;
 using Scalar.AspNetCore;
 using Wolverine;
-using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
 using Wolverine.FluentValidation;
 using Wolverine.Http;
@@ -17,7 +12,6 @@ using Wolverine.SqlServer;
 
 // ─── Migration CLI ───────────────────────────────────────────────────────────
 // Usage: dotnet ClinicApi.dll --migrate
-// Applies pending EF Core migrations and exits. Used by the db-migrate k8s Job.
 if (args.Contains("--migrate"))
 {
     var migrateBuilder = WebApplication.CreateBuilder(args);
@@ -36,158 +30,74 @@ if (args.Contains("--migrate"))
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuration
 var connectionString = builder.Configuration.GetConnectionString("ClinicDb")
-    ?? throw new InvalidOperationException(
-        "ConnectionStrings:ClinicDb is required. Set it in appsettings.json, environment variables, or user-secrets.");
+    ?? throw new InvalidOperationException("ConnectionStrings:ClinicDb is required.");
 var rabbitMqConnection = builder.Configuration.GetConnectionString("RabbitMq")
-    ?? throw new InvalidOperationException(
-        "ConnectionStrings:RabbitMq is required. Set it in appsettings.json, environment variables, or user-secrets.");
+    ?? throw new InvalidOperationException("ConnectionStrings:RabbitMq is required.");
 
-// EF Core (write-side)
-builder.Services.AddDbContextWithWolverineIntegration<ClinicDbContext>(options =>
-{
-    options.UseSqlServer(connectionString, sqlOptions =>
-    {
-        sqlOptions.CommandTimeout(30);
-    });
-});
+// Infrastructure services (EF Core, Dapper, FluentValidation, health checks)
+builder.Services.AddClinicPersistence(connectionString);
 
-// HIPAA §164.312(a)(2)(iv): PHI encryption at rest
-// Handled by SQL Server Always Encrypted — transparent to application code.
-// Connection string includes "Column Encryption Setting=Enabled" which tells
-// Microsoft.Data.SqlClient to decrypt PHI columns automatically.
-// CMK credentials injected via Vault sidecar in staging/prod.
-//
-// HIPAA §164.312(b): Audit controls
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddTransient<IPhiAuditLogger, PhiAuditLogger>();
+// Security (HIPAA audit logging, JWT auth, RBAC policies)
+builder.Services.AddClinicSecurity(builder.Environment);
 
-// HIPAA §164.312(a)(1): Access controls
-builder.Services.AddClinicAuthorization(builder.Environment);
+// Observability (OpenTelemetry — only when OTLP endpoint is configured)
+builder.AddClinicObservability();
 
-// Response compression (gzip/brotli for list endpoints)
+// HTTP features
 builder.Services.AddResponseCompression();
-
-
-
-// Dapper connection factory (read-side)
-builder.Services.AddSingleton<IDbConnectionFactory>(new SqlConnectionFactory(connectionString));
-
-// Bulk insert service
-builder.Services.AddSingleton<IBulkInsertService>(new SqlBulkInsertService(connectionString));
-
-// FluentValidation - auto-register validators from this assembly
-builder.Services.AddValidatorsFromAssemblyContaining<Program>(ServiceLifetime.Singleton);
-
-// Health checks
-builder.Services.AddHealthChecks()
-    .AddDbContextCheck<ClinicDbContext>("mssql");
-
-// OpenTelemetry (tracing + metrics) — enabled when OTEL_EXPORTER_OTLP_ENDPOINT is set
-var otlpEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
-
-if (otlpEndpoint is not null)
-{
-    builder.Services.AddOpenTelemetry()
-        .WithTracing(tracing =>
-        {
-            tracing
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddSqlClientInstrumentation(options => options.SetDbStatementForText = true)
-                .AddSource("Wolverine")
-                .AddOtlpExporter();
-        })
-        .WithMetrics(metrics =>
-        {
-            metrics
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddRuntimeInstrumentation()
-                .AddMeter("Wolverine")
-                .AddOtlpExporter();
-        });
-
-    builder.Logging.AddOpenTelemetry(logging =>
-    {
-        logging.AddOtlpExporter();
-    });
-}
-
-// Global exception handling with ProblemDetails
 builder.Services.AddProblemDetails();
-
-// Wolverine HTTP endpoint discovery with FluentValidation
 builder.Services.AddWolverineHttp();
-
-// OpenAPI documentation
 builder.Services.AddOpenApi();
 
-// Wolverine configuration
+// ─── Wolverine Configuration ─────────────────────────────────────────────────
+
 builder.Host.UseWolverine(opts =>
 {
-    // SQL Server persistence for durable messaging (outbox/inbox)
+    // Durable messaging (outbox/inbox with SQL Server)
     opts.PersistMessagesWithSqlServer(connectionString, "wolverine");
     opts.Policies.UseDurableOutboxOnAllSendingEndpoints();
     opts.Policies.UseDurableInboxOnAllListeners();
-
-    // EF Core integration for transactional outbox
     opts.Policies.AutoApplyTransactions();
 
-    // FluentValidation middleware
+    // Middleware pipeline
     opts.UseFluentValidation();
+    opts.Policies.AddMiddleware(typeof(ClinicApi.Infrastructure.Middleware.LoggingMiddleware));
+    opts.Policies.AddMiddleware(typeof(ClinicApi.Infrastructure.Middleware.PhiAuditMiddleware));
 
-    // RabbitMQ transport (single configuration chain)
+    // RabbitMQ transport
     opts.UseRabbitMq(new Uri(rabbitMqConnection))
         .AutoProvision()
         .EnableWolverineControlQueues()
-        .DeclareExchange("clinic.dead-letter", exchange =>
-        {
-            exchange.ExchangeType = ExchangeType.Direct;
-            exchange.IsDurable = true;
-        })
-        .DeclareQueue("clinic.dead-letter-queue", queue =>
-        {
-            queue.IsDurable = true;
-        })
+        .DeclareExchange("clinic.dead-letter", ex => { ex.ExchangeType = ExchangeType.Direct; ex.IsDurable = true; })
+        .DeclareQueue("clinic.dead-letter-queue", q => q.IsDurable = true)
         .BindExchange("clinic.dead-letter").ToQueue("clinic.dead-letter-queue");
 
-    // Configure exchanges
-    opts.PublishAllMessages().ToRabbitTopics("clinic.events", exchange =>
-    {
-        exchange.ExchangeType = ExchangeType.Topic;
-        exchange.IsDurable = true;
-    });
+    opts.PublishAllMessages().ToRabbitTopics("clinic.events", ex => { ex.ExchangeType = ExchangeType.Topic; ex.IsDurable = true; });
 
-    opts.ListenToRabbitQueue("clinic.commands", queue =>
-    {
-        queue.IsDurable = true;
-    }).CircuitBreaker(cb =>
-    {
-        cb.MinimumThreshold = 5;
-        cb.PauseTime = TimeSpan.FromSeconds(30);
-        cb.TrackingPeriod = TimeSpan.FromMinutes(1);
-        cb.FailurePercentageThreshold = 50;
-    });
+    opts.ListenToRabbitQueue("clinic.commands", q => q.IsDurable = true)
+        .CircuitBreaker(cb =>
+        {
+            cb.MinimumThreshold = 5;
+            cb.PauseTime = TimeSpan.FromSeconds(30);
+            cb.TrackingPeriod = TimeSpan.FromMinutes(1);
+            cb.FailurePercentageThreshold = 50;
+        });
 
-    // Error handling and retry policies
+    // Error handling
     opts.OnException<TimeoutException>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
-
     opts.OnException<InvalidOperationException>()
         .MoveToErrorQueue();
 
     // Discovery
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
-
-    // Custom middleware (logging + performance tracking combined)
-    opts.Policies.AddMiddleware(typeof(ClinicApi.Infrastructure.Middleware.LoggingMiddleware));
 });
+
+// ─── HTTP Pipeline ───────────────────────────────────────────────────────────
 
 var app = builder.Build();
 
-// Middleware
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseResponseCompression();
@@ -195,18 +105,13 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseHealthChecks("/health");
 
-// OpenAPI + Scalar (development only)
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
-// Wolverine HTTP endpoints
-app.MapWolverineEndpoints(opts =>
-{
-    opts.UseFluentValidationProblemDetailMiddleware();
-});
+app.MapWolverineEndpoints(opts => opts.UseFluentValidationProblemDetailMiddleware());
 
 app.Run();
 

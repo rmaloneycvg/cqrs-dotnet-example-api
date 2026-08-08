@@ -1,5 +1,4 @@
 using ClinicApi.Infrastructure.Persistence;
-using ClinicApi.Infrastructure.Security;
 using Dapper;
 
 namespace ClinicApi.Features.Patients.Queries;
@@ -7,14 +6,13 @@ namespace ClinicApi.Features.Patients.Queries;
 /// <summary>
 /// Query handlers use Dapper for read-side performance.
 /// Always Encrypted compatible: no server-side operations on encrypted columns.
-/// FullName computed client-side. Search uses in-memory filtering post-decryption.
+/// PHI audit logging handled by PhiAuditMiddleware (no per-handler injection).
 /// </summary>
 public static class GetPatientByIdHandler
 {
     public static async Task<PatientDto?> Handle(
         GetPatientById query,
-        IDbConnectionFactory connectionFactory,
-        IPhiAuditLogger audit)
+        IDbConnectionFactory connectionFactory)
     {
         const string sql = """
             SELECT Id, FirstName, LastName, DateOfBirth, Email, PhoneNumber,
@@ -34,11 +32,7 @@ public static class GetPatientByIdHandler
         using var connection = connectionFactory.CreateConnection();
         var raw = await connection.QuerySingleOrDefaultAsync<PatientRawDto>(sql, new { query.Id });
 
-        if (raw is null) return null;
-
-        audit.LogAccess("system", "Read", "Patient", raw.Id, "GetPatientById");
-
-        return raw.ToDto();
+        return raw?.ToDto();
     }
 }
 
@@ -46,8 +40,7 @@ public static class ListPatientsHandler
 {
     public static async Task<PatientListResponse> Handle(
         ListPatients query,
-        IDbConnectionFactory connectionFactory,
-        IPhiAuditLogger audit)
+        IDbConnectionFactory connectionFactory)
     {
         var offset = (query.Page - 1) * query.PageSize;
 
@@ -107,8 +100,6 @@ public static class ListPatientsHandler
                 .Take(query.PageSize)
                 .ToList();
         }
-
-        audit.LogBulkAccess("system", "List", "Patient", items.Count);
 
         return new PatientListResponse(
             items,
