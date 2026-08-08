@@ -30,7 +30,7 @@ spec:
           imagePullPolicy: {{ .Values.clinicApi.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: {{ if hasKey .Values.clinicApi.securityContext "readOnlyRootFilesystem" }}{{ .Values.clinicApi.securityContext.readOnlyRootFilesystem }}{{ else }}true{{ end }}
             capabilities:
               drop:
                 - ALL

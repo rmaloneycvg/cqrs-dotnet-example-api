@@ -1,4 +1,16 @@
 {{- if .Values.rabbitmq.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+data:
+  rabbitmq.conf: |
+    # Suppress deprecation warning for management metrics collection
+    deprecated_features.permit.management_metrics_collection = true
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -45,17 +57,23 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-          {{- if .Values.rabbitmq.persistence.enabled }}
           volumeMounts:
+            - name: rabbitmq-config
+              mountPath: /etc/rabbitmq/rabbitmq.conf
+              subPath: rabbitmq.conf
+            {{- if .Values.rabbitmq.persistence.enabled }}
             - name: rabbitmq-data
               mountPath: /var/lib/rabbitmq
-          {{- end }}
-      {{- if .Values.rabbitmq.persistence.enabled }}
+            {{- end }}
       volumes:
+        - name: rabbitmq-config
+          configMap:
+            name: rabbitmq-config
+        {{- if .Values.rabbitmq.persistence.enabled }}
         - name: rabbitmq-data
           persistentVolumeClaim:
             claimName: rabbitmq-data
-      {{- end }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

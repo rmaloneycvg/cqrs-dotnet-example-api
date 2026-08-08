@@ -24,10 +24,16 @@ spec:
       containers:
         - name: db-migrate
           image: "{{ .Values.dbMigrate.image.repository }}:{{ .Values.dbMigrate.image.tag }}"
+          imagePullPolicy: {{ .Values.dbMigrate.image.pullPolicy | default "IfNotPresent" }}
+          {{- if .Values.dbMigrate.command }}
+          command:
+            {{- toYaml .Values.dbMigrate.command | nindent 12 }}
+          {{- else }}
           command:
             - dotnet
             - ClinicApi.dll
             - --migrate
+          {{- end }}
           envFrom:
             - secretRef:
                 name: {{ .Values.clinicApi.secretRef }}

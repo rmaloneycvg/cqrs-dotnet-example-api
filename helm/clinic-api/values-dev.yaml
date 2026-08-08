@@ -10,16 +10,29 @@ clinicApi:
     repository: clinic-api-image
     tag: "latest"
     pullPolicy: Never  # Tilt builds locally
+  securityContext:
+    readOnlyRootFilesystem: false  # SDK needs writable fs for hot-reload
   env:
     ASPNETCORE_ENVIRONMENT: Development
     ASPNETCORE_URLS: "http://+:5000"
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "100m"
-    limits:
       memory: "512Mi"
-      cpu: "500m"
+      cpu: "200m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+  # SDK cold start (restore + build) takes 40-60s
+  readinessProbe:
+    path: /health
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 5
+  livenessProbe:
+    path: /health
+    initialDelaySeconds: 90
+    periodSeconds: 20
+    timeoutSeconds: 5
 
 nginx:
   replicaCount: 1
@@ -63,6 +76,15 @@ rabbitmq:
 
 dbMigrate:
   enabled: true
+  image:
+    repository: mcr.microsoft.com/mssql/server
+    tag: "2022-latest"
+    pullPolicy: IfNotPresent
+  command:
+    - /bin/bash
+    - -c
+    - |
+      /opt/mssql-tools18/bin/sqlcmd -S mssql-service,1433 -U sa -P "$SA_PASSWORD" -C -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'ClinicDb') CREATE DATABASE ClinicDb;"
   helmHook: false  # Tilt manages this as a manual trigger
 
 # ─── Secrets (created in-cluster for dev) ─────────────────────────────────────

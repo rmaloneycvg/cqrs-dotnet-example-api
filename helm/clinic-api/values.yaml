@@ -12,6 +12,8 @@ clinicApi:
     tag: "latest"
     pullPolicy: IfNotPresent
   port: 5000
+  securityContext:
+    readOnlyRootFilesystem: true
   env:
     ASPNETCORE_ENVIRONMENT: Production
     ASPNETCORE_URLS: "http://+:5000"
@@ -129,6 +131,7 @@ dbMigrate:
   image:
     repository: clinic-api
     tag: "latest"
+    pullPolicy: IfNotPresent
   backoffLimit: 1
   # When true, runs as a Helm post-install/post-upgrade hook.
   # When false, creates a standalone Job (for Tilt manual trigger).

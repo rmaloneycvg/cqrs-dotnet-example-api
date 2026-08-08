@@ -32,9 +32,11 @@ spec:
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+            {{- if ne .Values.nginx.tls.mode "self-signed" }}
             - name: tls-certs
               mountPath: /etc/nginx/ssl
               readOnly: true
+            {{- end }}
             - name: cache-volume
               mountPath: /var/cache/nginx
           readinessProbe:
@@ -57,10 +59,12 @@ spec:
         - name: nginx-config
           configMap:
             name: nginx-config
+        {{- if ne .Values.nginx.tls.mode "self-signed" }}
         - name: tls-certs
           secret:
             secretName: {{ .Values.nginx.tls.secretName }}
             optional: true
+        {{- end }}
         - name: cache-volume
           emptyDir:
             sizeLimit: 256Mi
