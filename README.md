@@ -89,6 +89,15 @@ flowchart TD
 | **Batch Delete (ExecuteDelete)** | Set-based delete without loading | `Features/Patients/BatchOperations/` |
 | **Batch Message Processing** | Wolverine `T[]` handler batching | `Infrastructure/Messaging/` |
 | **Custom Middleware** | Logging, performance tracking | `Infrastructure/Middleware/` |
+| **PHI Encryption (Always Encrypted)** | Column-level encryption for HIPAA | `Infrastructure/Security/` + SQL migration |
+| **Vault Sidecar (CMK Injection)** | HashiCorp Vault Agent for key delivery | `helm/clinic-api/templates/ring5-*` |
+| **PHI Audit Logging** | Structured access logging per HIPAA §164.312(b) | `Infrastructure/Security/PhiAuditLogger` |
+| **Authorization (JWT + RBAC)** | Policy-based access control | `Infrastructure/Security/AuthorizationConfig` |
+| **OpenTelemetry** | Distributed tracing + metrics (OTLP export) | `Program.cs` |
+| **Idempotent Creates** | Duplicate detection on Patient email/externalId | `Features/Patients/Commands/` |
+| **FluentValidation (all features)** | Input validation on all commands | `Features/*/Validators/` |
+| **Response Compression** | gzip/brotli for list endpoints | `Program.cs` |
+| **CI/CD Pipeline** | GitHub Actions (build, test, helm, docker) | `.github/workflows/ci.yml` |
 
 ## Prerequisites
 
@@ -148,7 +157,8 @@ cqrs-dotnet-example-api/
 │   └── Infrastructure/              # Cross-cutting concerns
 │       ├── Persistence/             # DbContext, Dapper, BulkInsert, Migrations
 │       ├── Messaging/               # Batch handlers, RabbitMQ config
-│       └── Middleware/              # Logging, Performance
+│       ├── Middleware/              # Logging, Performance
+│       └── Security/                # PHI encryption, audit logging, auth config
 ├── tests/
 │   ├── ClinicApi.Unit/              # xUnit + NSubstitute + InMemory EF
 │   ├── ClinicApi.Integration/       # Alba + Testcontainers + Respawn
@@ -165,9 +175,12 @@ cqrs-dotnet-example-api/
 │   └── nginx/Dockerfile             # Self-signed TLS, non-root (UID 101)
 ├── docs/
 │   ├── testing-architecture.md      # Comprehensive testing guide
-│   └── development-lifecycle.md     # Adding endpoints, deployment flows
+│   ├── development-lifecycle.md     # Adding endpoints, deployment flows
+│   └── hipaa-compliance.md          # Encryption, audit, key management
+├── .github/workflows/ci.yml         # GitHub Actions CI pipeline
 ├── Tiltfile                         # Tilt orchestration (uses helm chart)
 ├── Makefile                         # Common development commands
+├── .editorconfig                    # Code style enforcement
 ├── .env.example                     # Template for .env.dev (secrets)
 └── .env.dev                         # Local secrets (gitignored)
 ```
@@ -276,6 +289,28 @@ kubectl label namespace clinic-api-staging istio-injection=enabled
 kubectl label namespace clinic-api-prod istio-injection=enabled
 ```
 
+### OWASP Security Headers (NGINX Gateway)
+
+All responses include the following headers (configured in `nginx-configmap.yaml`):
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | HSTS — force HTTPS |
+| `X-Frame-Options` | `DENY` | Prevent clickjacking |
+| `X-Content-Type-Options` | `nosniff` | Prevent MIME-type sniffing |
+| `Content-Security-Policy` | `default-src 'self'; ...` | XSS/injection protection |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer data leakage |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Disable device APIs |
+
+### HIPAA Compliance
+
+See [docs/hipaa-compliance.md](docs/hipaa-compliance.md) for the complete guide including:
+- SQL Server Always Encrypted architecture (CMK/CEK)
+- HashiCorp Vault sidecar for key injection
+- PHI field inventory (what's encrypted, what's not, and why)
+- Audit logging and retention requirements
+- Production deployment checklist
+
 ## Development Commands
 
 ```bash
@@ -287,6 +322,7 @@ make test-unit           # Run unit tests only (<5s)
 make test-integration    # Run integration tests (requires Docker)
 make test-performance    # Run load tests (requires running API)
 make migrate             # Apply EF Core migrations
+make migrate-tilt        # Trigger migration via Tilt (k8s Job)
 make docker-build        # Build Docker image locally
 make health              # Check API health endpoint
 make rabbitmq-ui         # Open RabbitMQ management (localhost:15672)
@@ -300,6 +336,18 @@ make helm-install-prod   # Install to prod (with confirmation gate)
 ```
 
 ## Testing
+
+| Suite | Tests | Speed | Infrastructure |
+|-------|------:|-------|----------------|
+| Unit | 38 | <1s | InMemory EF, NSubstitute mocks |
+| Integration | 13 | ~4s | Testcontainers (MSSQL + RabbitMQ) |
+| Performance | 5 | ~2min | Live API via Tilt (NBomber) |
+
+```bash
+make test-unit           # Fast feedback loop
+make test-integration    # Full pipeline with real DB
+make test-performance    # Load tests (requires tilt up)
+```
 
 See [docs/testing-architecture.md](docs/testing-architecture.md) for comprehensive documentation including:
 - Architecture diagrams and flow charts
