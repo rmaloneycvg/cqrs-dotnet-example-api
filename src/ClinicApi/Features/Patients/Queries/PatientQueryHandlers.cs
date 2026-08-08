@@ -120,25 +120,27 @@ public static class ListPatientsHandler
 }
 
 /// <summary>
-/// Internal DTO for Dapper mapping. FullName computed client-side
-/// because SQL Server cannot concatenate Always Encrypted columns.
+/// Internal DTO for Dapper mapping. Uses types Dapper can materialize from SQL Server.
+/// FullName computed client-side (can't concatenate Always Encrypted columns).
 /// </summary>
-internal record PatientRawDto(
-    Guid Id,
-    string FirstName,
-    string LastName,
-    DateOnly DateOfBirth,
-    string Email,
-    string PhoneNumber,
-    string Status,
-    string City,
-    string State,
-    DateTime CreatedAt,
-    DateTime UpdatedAt)
+internal class PatientRawDto
 {
+    public Guid Id { get; set; }
+    public string FirstName { get; set; } = "";
+    public string LastName { get; set; } = "";
+    public DateTime DateOfBirth { get; set; }
+    public string Email { get; set; } = "";
+    public string PhoneNumber { get; set; } = "";
+    public string Status { get; set; } = "";
+    public string City { get; set; } = "";
+    public string State { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
     public PatientDto ToDto() => new(
         Id, FirstName, LastName,
         $"{FirstName} {LastName}",
-        DateOfBirth, Email, PhoneNumber,
+        DateOnly.FromDateTime(DateOfBirth),
+        Email, PhoneNumber,
         Status, City, State, CreatedAt, UpdatedAt);
 }

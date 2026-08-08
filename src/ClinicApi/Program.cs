@@ -61,7 +61,7 @@ builder.Services.AddDbContextWithWolverineIntegration<ClinicDbContext>(options =
 //
 // HIPAA §164.312(b): Audit controls
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<IPhiAuditLogger, PhiAuditLogger>();
+builder.Services.AddTransient<IPhiAuditLogger, PhiAuditLogger>();
 
 // HIPAA §164.312(a)(1): Access controls
 builder.Services.AddClinicAuthorization(builder.Environment);

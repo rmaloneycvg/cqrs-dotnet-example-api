@@ -20,9 +20,9 @@ public interface IPhiAuditLogger
 public class PhiAuditLogger : IPhiAuditLogger
 {
     private readonly ILogger<PhiAuditLogger> _logger;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
 
-    public PhiAuditLogger(ILogger<PhiAuditLogger> logger, IHttpContextAccessor httpContextAccessor)
+    public PhiAuditLogger(ILogger<PhiAuditLogger> logger, IHttpContextAccessor? httpContextAccessor = null)
     {
         _logger = logger;
         _httpContextAccessor = httpContextAccessor;
@@ -30,7 +30,7 @@ public class PhiAuditLogger : IPhiAuditLogger
 
     private string GetCurrentUserId()
     {
-        var user = _httpContextAccessor.HttpContext?.User;
+        var user = _httpContextAccessor?.HttpContext?.User;
         return user?.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? user?.FindFirst("sub")?.Value
             ?? "anonymous";
