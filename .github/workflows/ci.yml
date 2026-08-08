@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, staging, prod]
+  pull_request:
+    branches: [dev]
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: TestPassword123!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P TestPassword123! -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      rabbitmq:
+        image: rabbitmq:4-management
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Check formatting
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Run unit tests
+        run: dotnet test tests/ClinicApi.Unit --no-build -c Release --logger "trx;LogFileName=unit-results.trx"
+
+      - name: Run integration tests
+        env:
+          ConnectionStrings__ClinicDb: "Server=localhost,1433;Database=ClinicDb_Test;User Id=sa;Password=TestPassword123!;TrustServerCertificate=True;"
+          ConnectionStrings__RabbitMq: "amqp://guest:guest@localhost:5672"
+        run: dotnet test tests/ClinicApi.Integration --no-build -c Release --logger "trx;LogFileName=integration-results.trx"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: tests/**/TestResults/*.trx
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Lint (dev)
+        run: helm lint ./helm/clinic-api -f ./helm/clinic-api/values-dev.yaml
+
+      - name: Lint (staging)
+        run: helm lint ./helm/clinic-api -f ./helm/clinic-api/values-staging.yaml
+
+      - name: Lint (prod)
+        run: helm lint ./helm/clinic-api -f ./helm/clinic-api/values-prod.yaml
+
+      - name: Template render (dev)
+        run: |
+          helm template clinic-api ./helm/clinic-api \
+            -f ./helm/clinic-api/values-dev.yaml \
+            --set secrets.data.SA_PASSWORD=ci-test \
+            --set secrets.data.RABBITMQ_DEFAULT_PASS=ci-test \
+            --set secrets.data.ConnectionStrings__ClinicDb=ci-test \
+            --set secrets.data.ConnectionStrings__RabbitMq=ci-test \
+            > /dev/null
+
+      - name: Template render (staging)
+        run: helm template clinic-api ./helm/clinic-api -f ./helm/clinic-api/values-staging.yaml > /dev/null
+
+      - name: Template render (prod)
+        run: helm template clinic-api ./helm/clinic-api -f ./helm/clinic-api/values-prod.yaml > /dev/null
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image (production stage)
+        run: docker build -f docker/api/Dockerfile -t clinic-api:ci --target runtime .
+
+      - name: Build API image (dev stage)
+        run: docker build -f docker/api/Dockerfile -t clinic-api:ci-dev --target development .
+
+      - name: Build NGINX image
+        run: docker build -f docker/nginx/Dockerfile -t nginx-gateway:ci docker/nginx/
