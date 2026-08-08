@@ -110,6 +110,7 @@ export PATH="$PATH:$HOME/.dotnet/tools"
 
 # Copy the environment template for local secrets
 cp .env.example .env.dev
+# Edit .env.dev with your local credentials (gitignored)
 ```
 
 ## Quick Start
@@ -118,7 +119,10 @@ cp .env.example .env.dev
 # Clone and enter the project
 cd cqrs-dotnet-example-api
 
-# Start all services (MSSQL, RabbitMQ, API) via Helm + Tilt
+# Copy environment template and configure secrets
+cp .env.example .env.dev
+
+# Start all services (MSSQL, RabbitMQ, NGINX, API) via Helm + Tilt
 tilt up
 
 # Run database migration (manual trigger in Tilt UI, or:)
@@ -142,7 +146,7 @@ cqrs-dotnet-example-api/
 │   │   ├── Billing/                 # Payment saga + batch invoicing
 │   │   └── Prescriptions/           # Scheduled messages
 │   └── Infrastructure/              # Cross-cutting concerns
-│       ├── Persistence/             # DbContext, Dapper, BulkInsert
+│       ├── Persistence/             # DbContext, Dapper, BulkInsert, Migrations
 │       ├── Messaging/               # Batch handlers, RabbitMQ config
 │       └── Middleware/              # Logging, Performance
 ├── tests/
@@ -156,11 +160,16 @@ cqrs-dotnet-example-api/
 │   ├── values-staging.yaml          # Staging: cert-manager, persistent, 2 replicas
 │   ├── values-prod.yaml             # Prod: HA, managed services, strict CORS
 │   └── templates/                   # Templated k8s resources
-├── docker/                          # Dockerfiles and infra config
+├── docker/
+│   ├── api/Dockerfile               # Multi-stage (deps → build → publish → runtime → dev)
+│   └── nginx/Dockerfile             # Self-signed TLS, non-root (UID 101)
 ├── docs/
-│   └── testing-architecture.md      # Comprehensive testing guide
+│   ├── testing-architecture.md      # Comprehensive testing guide
+│   └── development-lifecycle.md     # Adding endpoints, deployment flows
 ├── Tiltfile                         # Tilt orchestration (uses helm chart)
-└── Makefile                         # Common development commands
+├── Makefile                         # Common development commands
+├── .env.example                     # Template for .env.dev (secrets)
+└── .env.dev                         # Local secrets (gitignored)
 ```
 
 ## Helm Chart
@@ -196,6 +205,41 @@ helm upgrade --install clinic-api ./helm/clinic-api \
   -f ./helm/clinic-api/values-prod.yaml \
   -n clinic-api-prod --create-namespace
 ```
+
+## Local Development Architecture
+
+### Secrets Flow
+
+```
+.env.dev → Tiltfile (read_env_file) → Helm --set → k8s Secret → Pod envFrom
+```
+
+Secrets are never committed. The `.env.example` template shows required keys; `.env.dev` (gitignored) holds actual values. Tilt reads the file, escapes special characters (commas in connection strings), and injects values into the Helm chart which creates the `clinic-secrets` Kubernetes Secret.
+
+### Container Security
+
+All containers run as non-root:
+
+| Service | User | UID | Notes |
+|---------|------|-----|-------|
+| Clinic API (dev) | appuser | 10001 | SDK image, writable filesystem for hot-reload |
+| Clinic API (prod) | appuser | 10001 | Read-only filesystem |
+| NGINX | nginx | 101 | Listens on 8080/8443 (high ports, no privilege needed) |
+| MSSQL | mssql | 10001 | Default from Microsoft image |
+| RabbitMQ | rabbitmq | 999 | Default from official image |
+
+### RabbitMQ Topology
+
+RabbitMQ boots with only user credentials (from `RABBITMQ_DEFAULT_USER`/`RABBITMQ_DEFAULT_PASS` env vars). All exchanges, queues, and bindings are declared by Wolverine's `.AutoProvision()` when the API connects. This eliminates boot-order issues with static definition files in RabbitMQ 4.x.
+
+The topology is defined as code in `Program.cs`:
+- `clinic.events` (topic exchange) — domain event routing
+- `clinic.commands` (direct exchange) — command dispatch
+- `clinic.dead-letter` (direct exchange) — failed message handling
+
+### NGINX Gateway
+
+NGINX listens on high ports internally (8080 HTTP, 8443 HTTPS) to comply with non-root container requirements. The Kubernetes Service maps external ports (80/443) to these internal ports. Self-signed TLS certificates are generated at Docker build time for local development.
 
 ## Security Rings (Defense in Depth)
 
