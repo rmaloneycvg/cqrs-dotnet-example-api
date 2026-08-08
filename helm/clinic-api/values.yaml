@@ -116,6 +116,8 @@ mssql:
 # ─── RabbitMQ ─────────────────────────────────────────────────────────────────
 rabbitmq:
   enabled: true
+  auth:
+    username: guest  # Override in staging/prod values
   image:
     repository: rabbitmq
     tag: "4-management"
