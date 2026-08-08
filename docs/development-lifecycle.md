@@ -441,7 +441,7 @@ dotnet ef migrations add AddPatientInsurance \
 dotnet ef migrations script --project src/ClinicApi/ClinicApi.csproj | tail -20
 
 # Apply locally via Tilt
-tilt trigger db-migrate
+make migrate-tilt
 ```
 
 ### Step 6: Update Unit Tests
@@ -670,29 +670,45 @@ flowchart TD
 make up    # or: tilt up
 ```
 
-1. Tilt reads the Helm chart with `values-dev.yaml`
-2. Renders k8s manifests (Namespace, Secrets, MSSQL, RabbitMQ, API, NGINX)
-3. Builds Docker images locally (no push to registry)
-4. Deploys to local k8s cluster (Docker Desktop / kind / k3d)
-5. Establishes `live_update` watchers on `src/` directory
-6. Port-forwards: API (5000), NGINX (8443/8080), MSSQL (1433), RabbitMQ (15672)
+1. Tilt reads `.env.dev` and escapes special characters (commas in connection strings)
+2. Renders Helm chart with `values-dev.yaml` + secrets injected via `--set`
+3. Deploys k8s manifests (Namespace, RBAC, Secrets, MSSQL, RabbitMQ, API, NGINX)
+4. Builds Docker images locally (no push to registry)
+5. Deploys to local k8s cluster (Docker Desktop / kind / k3d / OrbStack)
+6. Establishes `live_update` watchers on `src/` directory
+7. Port-forwards: API (5000), NGINX (8443/8080), MSSQL (1433), RabbitMQ (5672/15672)
+
+**First run after `tilt up`:**
+```bash
+# Create the database and apply EF Core migrations
+make migrate-tilt
+```
 
 **On file save:**
 - `.cs` files synced into running container → `dotnet watch` hot-reloads
-- `ClinicApi.csproj` changes → full container rebuild (triggered by `fall_back_on`)
+- `ClinicApi.csproj` / `global.json` / `Directory.Build.props` changes → full container rebuild
 - Helm values/templates changed → Tilt re-renders and re-applies manifests
 
 **Characteristics:**
 - Single replica per service
 - Ephemeral storage (no PVCs)
-- Self-signed TLS
-- Secrets created inline by Helm
-- No Istio, no network policies, no WAF
+- Self-signed TLS (cert baked into NGINX image)
+- Non-root containers (API UID 10001, NGINX UID 101)
+- NGINX on high ports (8080/8443) — non-root friendly
+- Secrets created inline by Helm from `.env.dev`
+- RabbitMQ topology auto-provisioned by Wolverine on API connect
+- No Istio, no WAF
+- Network policies enabled (mirrors staging for early detection)
 - RBAC enabled (warn mode PSA)
 
 **Verify:**
 ```bash
+# Direct API access (bypasses NGINX)
+curl http://localhost:5000/health
+
+# Through NGINX gateway (full production-like path)
 curl -k https://localhost:8443/api/patients | jq .
+
 make health
 ```
 
@@ -909,6 +925,7 @@ flowchart TD
 | Step | Command | What It Does | Gate |
 |------|---------|-------------|------|
 | Start environment | `make up` | Helm + Tilt deploys full stack locally | Services healthy |
+| Run migrations | `make migrate-tilt` | Creates DB + applies EF Core migrations | Migration succeeds |
 | Write code | — | Implement vertical slice (command → handler → validator → endpoint) | — |
 | Run unit tests | `make test-unit` | InMemory EF, no I/O, <1s | All pass |
 | Run integration tests | `make test-integration` | Testcontainers (MSSQL + RabbitMQ), full pipeline | All pass |
@@ -1013,11 +1030,15 @@ git checkout dev && git pull
 git checkout -b feat/my-feature
 make up
 
+# First time only (or after schema changes):
+make migrate-tilt
+
 # Development loop (repeat):
 #   1. Edit code in src/ClinicApi/Features/...
-#   2. Tilt live-reloads automatically
-#   3. curl -k https://localhost:8443/api/... to verify
-#   4. Write/run unit tests: make test-unit
+#   2. Tilt live-reloads automatically (dotnet watch)
+#   3. curl http://localhost:5000/api/... to verify (direct)
+#   4. curl -k https://localhost:8443/api/... to verify (through NGINX)
+#   5. Write/run unit tests: make test-unit
 
 # Before pushing:
 make test-unit
