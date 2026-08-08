@@ -47,6 +47,13 @@ spec:
                 name: {{ .Values.clinicApi.secretRef }}
           resources:
             {{- toYaml .Values.clinicApi.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.clinicApi.readinessProbe.path }}
+              port: {{ .Values.clinicApi.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: {{ .Values.clinicApi.readinessProbe.path }}

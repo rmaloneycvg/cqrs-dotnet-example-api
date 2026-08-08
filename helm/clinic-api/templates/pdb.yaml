@@ -1,0 +1,29 @@
+{{- if gt (int .Values.clinicApi.replicaCount) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: clinic-api-pdb
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "clinic-api.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if and .Values.nginxGateway.enabled (gt (int .Values.nginxGateway.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nginx-gateway-pdb
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "nginxGateway.selectorLabels" . | nindent 6 }}
+{{- end }}

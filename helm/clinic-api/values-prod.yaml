@@ -8,7 +8,7 @@ global:
 clinicApi:
   replicaCount: 3
   image:
-    repository: ghcr.io/your-org/clinic-api  # TODO: replace with actual registry
+    repository: ghcr.io/ryanm/clinic-api
     tag: "1.0.0"  # Pin to semver release tag
     pullPolicy: IfNotPresent
   env:
@@ -22,11 +22,17 @@ clinicApi:
       memory: "1Gi"
       cpu: "2000m"
   secretRef: clinic-secrets
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 80
 
-nginx:
+nginxGateway:
   replicaCount: 3
   image:
-    repository: ghcr.io/your-org/nginx-gateway
+    repository: ghcr.io/ryanm/nginx-gateway
     tag: "1.0.0"
     pullPolicy: IfNotPresent
   tls:
@@ -72,7 +78,7 @@ rabbitmq:
 dbMigrate:
   enabled: true
   image:
-    repository: ghcr.io/your-org/clinic-api
+    repository: ghcr.io/ryanm/clinic-api
     tag: "1.0.0"
 
 # ─── Security Rings (Prod: full enforcement, all rings active) ────────────────

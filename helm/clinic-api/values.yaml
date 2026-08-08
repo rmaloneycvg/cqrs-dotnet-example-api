@@ -36,9 +36,16 @@ clinicApi:
     timeoutSeconds: 5
   # Secrets are mounted via external secret reference
   secretRef: clinic-secrets
+  # Autoscaling (disabled by default, enabled in prod)
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 80
 
 # ─── NGINX Gateway ───────────────────────────────────────────────────────────
-nginx:
+nginxGateway:
   enabled: true
   replicaCount: 1
   image:

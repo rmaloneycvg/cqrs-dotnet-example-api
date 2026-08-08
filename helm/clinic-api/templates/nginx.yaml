@@ -1,4 +1,4 @@
-{{- if .Values.nginx.enabled }}
+{{- if .Values.nginxGateway.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,33 +6,41 @@ metadata:
   namespace: {{ include "clinic-api.namespace" . }}
   labels:
     {{- include "clinic-api.labels" . | nindent 4 }}
-    {{- include "nginx.selectorLabels" . | nindent 4 }}
+    {{- include "nginxGateway.selectorLabels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.nginx.replicaCount }}
+  replicas: {{ .Values.nginxGateway.replicaCount }}
   selector:
     matchLabels:
-      {{- include "nginx.selectorLabels" . | nindent 6 }}
+      {{- include "nginxGateway.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "nginx.selectorLabels" . | nindent 8 }}
+        {{- include "nginxGateway.selectorLabels" . | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/nginx-configmap.yaml") . | sha256sum }}
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101  # nginx user in nginx:alpine image
       containers:
-        - name: nginx
-          image: "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
-          imagePullPolicy: {{ .Values.nginx.image.pullPolicy }}
+        - name: nginx-gateway
+          image: "{{ .Values.nginxGateway.image.repository }}:{{ .Values.nginxGateway.image.tag }}"
+          imagePullPolicy: {{ .Values.nginxGateway.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
-            - containerPort: 443
+            - containerPort: 8443
               name: https
-            - containerPort: 80
+            - containerPort: 8080
               name: http
           volumeMounts:
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
-            {{- if ne .Values.nginx.tls.mode "self-signed" }}
+            {{- if ne .Values.nginxGateway.tls.mode "self-signed" }}
             - name: tls-certs
               mountPath: /etc/nginx/ssl
               readOnly: true
@@ -42,27 +50,27 @@ spec:
           readinessProbe:
             httpGet:
               path: /nginx-health
-              port: 80
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 2
           livenessProbe:
             httpGet:
               path: /nginx-health
-              port: 80
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 15
             timeoutSeconds: 3
           resources:
-            {{- toYaml .Values.nginx.resources | nindent 12 }}
+            {{- toYaml .Values.nginxGateway.resources | nindent 12 }}
       volumes:
         - name: nginx-config
           configMap:
             name: nginx-config
-        {{- if ne .Values.nginx.tls.mode "self-signed" }}
+        {{- if ne .Values.nginxGateway.tls.mode "self-signed" }}
         - name: tls-certs
           secret:
-            secretName: {{ .Values.nginx.tls.secretName }}
+            secretName: {{ .Values.nginxGateway.tls.secretName }}
             optional: true
         {{- end }}
         - name: cache-volume
@@ -82,13 +90,13 @@ metadata:
   {{- end }}
 spec:
   selector:
-    {{- include "nginx.selectorLabels" . | nindent 4 }}
+    {{- include "nginxGateway.selectorLabels" . | nindent 4 }}
   ports:
     - name: https
-      port: {{ .Values.nginx.service.httpsPort }}
-      targetPort: 443
+      port: {{ .Values.nginxGateway.service.httpsPort }}
+      targetPort: 8443
     - name: http
-      port: {{ .Values.nginx.service.httpPort }}
-      targetPort: 80
-  type: {{ .Values.nginx.service.type }}
+      port: {{ .Values.nginxGateway.service.httpPort }}
+      targetPort: 8080
+  type: {{ .Values.nginxGateway.service.type }}
 {{- end }}

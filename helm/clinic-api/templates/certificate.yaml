@@ -1,4 +1,4 @@
-{{- if and .Values.nginx.enabled (eq .Values.nginx.tls.mode "cert-manager") }}
+{{- if and .Values.nginxGateway.enabled (eq .Values.nginxGateway.tls.mode "cert-manager") }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -7,12 +7,12 @@ metadata:
   labels:
     {{- include "clinic-api.labels" . | nindent 4 }}
 spec:
-  secretName: {{ .Values.nginx.tls.secretName }}
+  secretName: {{ .Values.nginxGateway.tls.secretName }}
   issuerRef:
-    name: {{ .Values.nginx.tls.issuerName }}
-    kind: {{ .Values.nginx.tls.issuerKind }}
+    name: {{ .Values.nginxGateway.tls.issuerName }}
+    kind: {{ .Values.nginxGateway.tls.issuerKind }}
   dnsNames:
-    {{- range .Values.nginx.tls.dnsNames }}
+    {{- range .Values.nginxGateway.tls.dnsNames }}
     - {{ . | quote }}
     {{- end }}
 {{- end }}

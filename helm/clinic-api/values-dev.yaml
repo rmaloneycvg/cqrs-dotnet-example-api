@@ -1,5 +1,6 @@
 # ─── Dev Environment Overrides ────────────────────────────────────────────────
 # Local development via Tilt. Single replicas, relaxed limits, self-signed TLS.
+# Secrets are loaded from .env.dev (gitignored) and injected via Tilt.
 
 global:
   namespace: clinic-api
@@ -34,7 +35,7 @@ clinicApi:
     periodSeconds: 20
     timeoutSeconds: 5
 
-nginx:
+nginxGateway:
   replicaCount: 1
   image:
     repository: nginx-gateway-image
@@ -42,6 +43,9 @@ nginx:
     pullPolicy: Never
   tls:
     mode: self-signed
+    # NOTE: Staging/prod use cert-manager with a Certificate resource that creates
+    # a k8s Secret mounted as a volume. Dev uses certs baked into the Docker image.
+    # The TLS volume mount path in nginx.yaml is only exercised when mode != "self-signed".
   cors:
     origins:
       - "http://localhost:3000"
@@ -60,7 +64,9 @@ nginx:
 mssql:
   enabled: true
   persistence:
-    enabled: false  # Ephemeral in dev
+    enabled: true     # Persist data across restarts (mirrors staging/prod behavior)
+    size: "1Gi"
+    storageClass: ""  # Uses cluster default (Docker Desktop / Rancher provides one)
   resources:
     requests:
       memory: "512Mi"
@@ -72,38 +78,40 @@ mssql:
 rabbitmq:
   enabled: true
   persistence:
-    enabled: false  # Ephemeral in dev
+    enabled: false  # Ephemeral in dev (topology pre-loaded via definitions.json ConfigMap)
 
 dbMigrate:
   enabled: true
   image:
-    repository: mcr.microsoft.com/mssql/server
-    tag: "2022-latest"
-    pullPolicy: IfNotPresent
+    repository: clinic-api-image
+    tag: "latest"
+    pullPolicy: Never
   command:
-    - /bin/bash
-    - -c
-    - |
-      /opt/mssql-tools18/bin/sqlcmd -S mssql-service,1433 -U sa -P "$SA_PASSWORD" -C -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'ClinicDb') CREATE DATABASE ClinicDb;"
+    - dotnet
+    - run
+    - --project
+    - src/ClinicApi/ClinicApi.csproj
+    - --no-launch-profile
+    - --
+    - --migrate
   helmHook: false  # Tilt manages this as a manual trigger
 
-# ─── Secrets (created in-cluster for dev) ─────────────────────────────────────
+# ─── Secrets (populated from .env.dev via Tilt) ──────────────────────────────
+# Values are injected at runtime by the Tiltfile reading .env.dev.
+# Do NOT commit actual secret values here. See .env.example for the template.
 secrets:
   create: true
-  data:
-    SA_PASSWORD: "YourStrong@Passw0rd"
-    RABBITMQ_DEFAULT_PASS: "guest"
-    ConnectionStrings__ClinicDb: "Server=mssql-service,1433;Database=ClinicDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;"
-    ConnectionStrings__RabbitMq: "amqp://guest:guest@rabbitmq-service:5672"
+  data: {}
 
-# ─── Security Rings (Dev: minimal — no Istio, no WAF) ────────────────────────
+# ─── Security Rings (Dev: network policies + RBAC, no Istio) ─────────────────
 security:
   ring1:
     enabled: false
   ring2:
-    enabled: false
+    enabled: true
     networkPolicies:
-      enabled: false  # No network policies locally; all pods talk freely
+      enabled: true    # Mirrors staging/prod — catches missing egress rules early
+      defaultDeny: true
   ring3:
     enabled: false    # No Istio sidecar in dev
   ring4:

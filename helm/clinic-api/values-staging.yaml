@@ -8,7 +8,7 @@ global:
 clinicApi:
   replicaCount: 2
   image:
-    repository: ghcr.io/your-org/clinic-api  # TODO: replace with actual registry
+    repository: ghcr.io/ryanm/clinic-api
     tag: "staging"
     pullPolicy: Always
   env:
@@ -23,10 +23,10 @@ clinicApi:
       cpu: "1000m"
   secretRef: clinic-secrets
 
-nginx:
+nginxGateway:
   replicaCount: 2
   image:
-    repository: ghcr.io/your-org/nginx-gateway
+    repository: ghcr.io/ryanm/nginx-gateway
     tag: "staging"
     pullPolicy: Always
   tls:
@@ -88,7 +88,7 @@ rabbitmq:
 dbMigrate:
   enabled: true
   image:
-    repository: ghcr.io/your-org/clinic-api
+    repository: ghcr.io/ryanm/clinic-api
     tag: "staging"
 
 # ─── Security Rings (Staging: progressive enforcement) ────────────────────────
@@ -98,7 +98,6 @@ security:
     waf:
       enabled: true
       annotations:
-        # Example: AWS WAF ACL attached to the load balancer
         service.beta.kubernetes.io/aws-load-balancer-waf-acl-id: "acl-staging-xxx"
 
   ring2:
@@ -140,7 +139,7 @@ security:
       serviceAccountName: clinic-api
     secretEncryption:
       enabled: true
-      provider: "aws-kms"  # Adjust for your cloud
+      provider: "aws-kms"
 
   ring5:
     enabled: true
@@ -149,5 +148,5 @@ security:
       mssqlTDE: true
     auditLogging:
       enabled: true
-      retentionYears: 1     # Shorter retention for staging
+      retentionYears: 1
       destination: "cloudwatch"

@@ -1,0 +1,29 @@
+{{- if .Values.clinicApi.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: clinic-api-hpa
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: clinic-api
+  minReplicas: {{ .Values.clinicApi.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.clinicApi.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.clinicApi.autoscaling.targetCPUUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.clinicApi.autoscaling.targetMemoryUtilization | default 80 }}
+{{- end }}

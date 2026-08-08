@@ -2,16 +2,16 @@ Thank you for installing {{ .Chart.Name }}!
 
 Environment: {{ .Values.clinicApi.env.ASPNETCORE_ENVIRONMENT }}
 Namespace:   {{ include "clinic-api.namespace" . }}
-Replicas:    {{ .Values.clinicApi.replicaCount }} (API) / {{ .Values.nginx.replicaCount }} (NGINX)
+Replicas:    {{ .Values.clinicApi.replicaCount }} (API) / {{ .Values.nginxGateway.replicaCount }} (NGINX Gateway)
 
-{{- if eq .Values.nginx.service.type "ClusterIP" }}
+{{- if eq .Values.nginxGateway.service.type "ClusterIP" }}
 
 Access the API via port-forward:
-  kubectl port-forward svc/nginx-gateway {{ .Values.nginx.service.httpsPort }}:443 -n {{ include "clinic-api.namespace" . }}
-  curl https://localhost:{{ .Values.nginx.service.httpsPort }}/api/health -k
+  kubectl port-forward svc/nginx-gateway {{ .Values.nginxGateway.service.httpsPort }}:443 -n {{ include "clinic-api.namespace" . }}
+  curl https://localhost:{{ .Values.nginxGateway.service.httpsPort }}/api/health -k
 {{- end }}
 
-{{- if eq .Values.nginx.service.type "LoadBalancer" }}
+{{- if eq .Values.nginxGateway.service.type "LoadBalancer" }}
 
 Get the external IP:
   kubectl get svc nginx-gateway -n {{ include "clinic-api.namespace" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
@@ -28,7 +28,7 @@ MSSQL: Using external managed database. Ensure ConnectionStrings__ClinicDb is se
 {{- if .Values.rabbitmq.enabled }}
 
 RabbitMQ is deployed in-cluster.
-{{- if .Values.nginx.rabbitmqManagement.enabled }}
+{{- if .Values.nginxGateway.rabbitmqManagement.enabled }}
   Management UI: https://<host>/rabbitmq/
 {{- end }}
 {{- else }}

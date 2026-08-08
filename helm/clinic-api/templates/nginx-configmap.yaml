@@ -1,4 +1,4 @@
-{{- if .Values.nginx.enabled }}
+{{- if .Values.nginxGateway.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -41,16 +41,16 @@ data:
         scgi_temp_path /tmp/scgi;
 
         # ─── Rate Limiting Zones ─────────────────────────────────────────
-        limit_req_zone $binary_remote_addr zone=api:10m rate={{ .Values.nginx.rateLimiting.api.rate }};
-        limit_req_zone $binary_remote_addr zone=auth:10m rate={{ .Values.nginx.rateLimiting.auth.rate }};
-        limit_req_zone $binary_remote_addr zone=management:10m rate={{ .Values.nginx.rateLimiting.management.rate }};
+        limit_req_zone $binary_remote_addr zone=api:10m rate={{ .Values.nginxGateway.rateLimiting.api.rate }};
+        limit_req_zone $binary_remote_addr zone=auth:10m rate={{ .Values.nginxGateway.rateLimiting.auth.rate }};
+        limit_req_zone $binary_remote_addr zone=management:10m rate={{ .Values.nginxGateway.rateLimiting.management.rate }};
 
-        {{- if .Values.nginx.cache.enabled }}
+        {{- if .Values.nginxGateway.cache.enabled }}
         # ─── Proxy Cache ─────────────────────────────────────────────────
         proxy_cache_path /var/cache/nginx/api_cache
                          levels=1:2
                          keys_zone=api_cache:10m
-                         max_size={{ .Values.nginx.cache.maxSize }}
+                         max_size={{ .Values.nginxGateway.cache.maxSize }}
                          inactive=5m
                          use_temp_path=off;
         {{- end }}
@@ -58,7 +58,7 @@ data:
         # ─── CORS Origin Map ─────────────────────────────────────────────
         map $http_origin $cors_origin {
             default "";
-            {{- range .Values.nginx.cors.origins }}
+            {{- range .Values.nginxGateway.cors.origins }}
             "{{ . }}" "{{ . }}";
             {{- end }}
         }
@@ -69,7 +69,7 @@ data:
             keepalive 16;
         }
 
-        {{- if .Values.nginx.rabbitmqManagement.enabled }}
+        {{- if .Values.nginxGateway.rabbitmqManagement.enabled }}
         upstream rabbitmq_management {
             server rabbitmq-service:15672;
         }
@@ -83,7 +83,7 @@ data:
 
         # ─── HTTP → HTTPS Redirect ──────────────────────────────────────
         server {
-            listen 80;
+            listen 8080;
             server_name _;
 
             location = /nginx-health {
@@ -99,7 +99,7 @@ data:
 
         # ─── HTTPS Server ────────────────────────────────────────────────
         server {
-            listen 443 ssl;
+            listen 8443 ssl;
             http2 on;
             server_name _;
 
@@ -130,7 +130,7 @@ data:
 
             # ─── API Routes ──────────────────────────────────────────────
             location /api/ {
-                limit_req zone=api burst={{ .Values.nginx.rateLimiting.api.burst }} nodelay;
+                limit_req zone=api burst={{ .Values.nginxGateway.rateLimiting.api.burst }} nodelay;
                 limit_req_status 429;
 
                 if ($request_method = OPTIONS) {
@@ -161,10 +161,10 @@ data:
                 proxy_send_timeout 30s;
                 proxy_read_timeout 30s;
 
-                {{- if .Values.nginx.cache.enabled }}
+                {{- if .Values.nginxGateway.cache.enabled }}
                 proxy_cache api_cache;
                 proxy_cache_methods GET HEAD;
-                proxy_cache_valid 200 {{ .Values.nginx.cache.validDuration }};
+                proxy_cache_valid 200 {{ .Values.nginxGateway.cache.validDuration }};
                 proxy_cache_valid 404 30s;
                 proxy_cache_bypass $http_authorization;
                 proxy_cache_bypass $cookie_session;
@@ -176,7 +176,7 @@ data:
 
             # ─── Auth Routes (stricter rate limit) ───────────────────────
             location /api/auth/ {
-                limit_req zone=auth burst={{ .Values.nginx.rateLimiting.auth.burst }} nodelay;
+                limit_req zone=auth burst={{ .Values.nginxGateway.rateLimiting.auth.burst }} nodelay;
                 limit_req_status 429;
 
                 if ($request_method = OPTIONS) {
@@ -215,10 +215,10 @@ data:
                 access_log off;
             }
 
-            {{- if .Values.nginx.rabbitmqManagement.enabled }}
+            {{- if .Values.nginxGateway.rabbitmqManagement.enabled }}
             # ─── RabbitMQ Management UI ──────────────────────────────────
             location /rabbitmq/ {
-                limit_req zone=management burst={{ .Values.nginx.rateLimiting.management.burst }} nodelay;
+                limit_req zone=management burst={{ .Values.nginxGateway.rateLimiting.management.burst }} nodelay;
 
                 proxy_pass http://rabbitmq_management/;
                 proxy_http_version 1.1;

@@ -13,8 +13,8 @@ spec:
   mtls:
     mode: {{ .Values.security.ring3.mtls.mode }}
 {{- end }}
----
 {{- if and .Values.security.ring3.enabled .Values.security.ring3.authorizationPolicies.enabled }}
+---
 # ─── Ring 3: Authorization Policy (L7 Access Control) ────────────────────────
 # Only allow traffic from explicitly listed service accounts.
 apiVersion: security.istio.io/v1

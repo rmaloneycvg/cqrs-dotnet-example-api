@@ -1,7 +1,8 @@
 {{/*
-Common labels
+Common labels applied to all resources
 */}}
 {{- define "clinic-api.labels" -}}
+app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
@@ -16,9 +17,9 @@ app: clinic-api
 {{- end }}
 
 {{/*
-Selector labels for nginx
+Selector labels for nginx-gateway
 */}}
-{{- define "nginx.selectorLabels" -}}
+{{- define "nginxGateway.selectorLabels" -}}
 app: nginx-gateway
 {{- end }}
 

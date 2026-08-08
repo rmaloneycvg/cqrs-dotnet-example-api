@@ -18,7 +18,7 @@ spec:
         protocol: HTTPS
       tls:
         mode: SIMPLE
-        credentialName: {{ .Values.nginx.tls.secretName }}
+        credentialName: {{ .Values.nginxGateway.tls.secretName }}
       hosts:
         {{- range .Values.security.ring2.istioGateway.hosts }}
         - {{ . | quote }}
@@ -57,7 +57,7 @@ spec:
         - destination:
             host: nginx-gateway
             port:
-              number: {{ .Values.nginx.service.httpsPort }}
+              number: {{ .Values.nginxGateway.service.httpsPort }}
 ---
 {{- if .Values.security.ring2.istioGateway.jwtValidation.enabled }}
 # ─── Ring 2: JWT Request Authentication ──────────────────────────────────────
@@ -72,7 +72,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "nginx.selectorLabels" . | nindent 6 }}
+      {{- include "nginxGateway.selectorLabels" . | nindent 6 }}
   jwtRules:
     - issuer: {{ .Values.security.ring2.istioGateway.jwtValidation.issuer | quote }}
       jwksUri: {{ .Values.security.ring2.istioGateway.jwtValidation.jwksUri | quote }}

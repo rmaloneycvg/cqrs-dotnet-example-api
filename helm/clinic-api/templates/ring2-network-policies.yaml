@@ -20,7 +20,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-ingress-to-nginx
+  name: allow-ingress-to-nginx-gateway
   namespace: {{ include "clinic-api.namespace" . }}
   labels:
     {{- include "clinic-api.labels" . | nindent 4 }}
@@ -28,7 +28,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      {{- include "nginx.selectorLabels" . | nindent 6 }}
+      {{- include "nginxGateway.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
   ingress:
@@ -42,11 +42,11 @@ spec:
         - protocol: TCP
           port: 80
 ---
-# ─── Allow: NGINX → Clinic API ───────────────────────────────────────────────
+# ─── Allow: NGINX Gateway → Clinic API ───────────────────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-nginx-to-api
+  name: allow-nginx-gateway-to-api
   namespace: {{ include "clinic-api.namespace" . }}
   labels:
     {{- include "clinic-api.labels" . | nindent 4 }}
@@ -61,7 +61,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              {{- include "nginx.selectorLabels" . | nindent 14 }}
+              {{- include "nginxGateway.selectorLabels" . | nindent 14 }}
       ports:
         - protocol: TCP
           port: {{ .Values.clinicApi.port }}
@@ -171,11 +171,11 @@ spec:
         - protocol: TCP
           port: 5672
 ---
-# ─── Allow: NGINX Egress to API ──────────────────────────────────────────────
+# ─── Allow: NGINX Gateway Egress to API + RabbitMQ Management ─────────────────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-nginx-egress
+  name: allow-nginx-gateway-egress
   namespace: {{ include "clinic-api.namespace" . }}
   labels:
     {{- include "clinic-api.labels" . | nindent 4 }}
@@ -183,7 +183,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      {{- include "nginx.selectorLabels" . | nindent 6 }}
+      {{- include "nginxGateway.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Egress
   egress:
