@@ -53,4 +53,8 @@ public static class PatientEndpoints
     [WolverinePost("/api/patients/purge-expired")]
     public static Task<PurgeResult> PurgeExpired(PurgeExpiredRecords command, IMessageBus bus)
         => bus.InvokeAsync<PurgeResult>(command);
+
+    [WolverineDelete("/api/patients/{id}")]
+    public static Task DeactivatePatient(Guid id, IMessageBus bus)
+        => bus.InvokeAsync(new DeactivatePatient(id));
 }

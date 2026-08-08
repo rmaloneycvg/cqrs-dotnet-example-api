@@ -74,3 +74,20 @@ public static class UpdatePatientHandler
         return new PatientUpdated(patient.Id, patient.FirstName, patient.LastName);
     }
 }
+
+public static class DeactivatePatientHandler
+{
+    public static async Task Handle(
+        DeactivatePatient command,
+        ClinicDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var patient = await db.Patients.FindAsync([command.Id], cancellationToken)
+            ?? throw new InvalidOperationException($"Patient {command.Id} not found");
+
+        patient.Status = PatientStatus.Inactive;
+        patient.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+}

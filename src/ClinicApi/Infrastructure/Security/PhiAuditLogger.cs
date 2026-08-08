@@ -39,24 +39,27 @@ public class PhiAuditLogger : IPhiAuditLogger
     public void LogAccess(string userId, string action, string entityType, Guid entityId, string? details = null)
     {
         var resolvedUser = userId == "system" ? GetCurrentUserId() : userId;
+        var traceId = System.Diagnostics.Activity.Current?.TraceId.ToString() ?? "no-trace";
         _logger.LogInformation(
-            "PHI_AUDIT: User={UserId} Action={Action} Entity={EntityType} Id={EntityId} Details={Details}",
-            resolvedUser, action, entityType, entityId, details ?? "none");
+            "PHI_AUDIT: User={UserId} Action={Action} Entity={EntityType} Id={EntityId} TraceId={TraceId} Details={Details}",
+            resolvedUser, action, entityType, entityId, traceId, details ?? "none");
     }
 
     public void LogModification(string userId, string action, string entityType, Guid entityId, string[] fieldsModified)
     {
         var resolvedUser = userId == "system" ? GetCurrentUserId() : userId;
+        var traceId = System.Diagnostics.Activity.Current?.TraceId.ToString() ?? "no-trace";
         _logger.LogInformation(
-            "PHI_AUDIT: User={UserId} Action={Action} Entity={EntityType} Id={EntityId} Fields={Fields}",
-            resolvedUser, action, entityType, entityId, string.Join(",", fieldsModified));
+            "PHI_AUDIT: User={UserId} Action={Action} Entity={EntityType} Id={EntityId} TraceId={TraceId} Fields={Fields}",
+            resolvedUser, action, entityType, entityId, traceId, string.Join(",", fieldsModified));
     }
 
     public void LogBulkAccess(string userId, string action, string entityType, int recordCount)
     {
         var resolvedUser = userId == "system" ? GetCurrentUserId() : userId;
+        var traceId = System.Diagnostics.Activity.Current?.TraceId.ToString() ?? "no-trace";
         _logger.LogInformation(
-            "PHI_AUDIT: User={UserId} Action={Action} Entity={EntityType} RecordCount={RecordCount}",
-            resolvedUser, action, entityType, recordCount);
+            "PHI_AUDIT: User={UserId} Action={Action} Entity={EntityType} RecordCount={RecordCount} TraceId={TraceId}",
+            resolvedUser, action, entityType, recordCount, traceId);
     }
 }

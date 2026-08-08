@@ -21,6 +21,8 @@ public record BillingHistoryResponse(List<InvoiceDto> Invoices, int TotalCount, 
 
 public record OutstandingBalanceDto(Guid PatientId, string PatientName, decimal TotalOutstanding, int InvoiceCount);
 
+public record OutstandingBalancesResponse(List<OutstandingBalanceDto> Items, int Page, int PageSize);
+
 public static class GetPatientBillingHistoryHandler
 {
     public static async Task<BillingHistoryResponse> Handle(
@@ -70,7 +72,7 @@ public static class GetPatientBillingHistoryHandler
 
 public static class GetOutstandingBalancesHandler
 {
-    public static async Task<List<OutstandingBalanceDto>> Handle(
+    public static async Task<OutstandingBalancesResponse> Handle(
         GetOutstandingBalances query,
         IDbConnectionFactory connectionFactory)
     {
@@ -89,11 +91,13 @@ public static class GetOutstandingBalancesHandler
             """;
 
         using var connection = connectionFactory.CreateConnection();
-        return (await connection.QueryAsync<OutstandingBalanceDto>(sql, new
+        var items = (await connection.QueryAsync<OutstandingBalanceDto>(sql, new
         {
             query.MinimumBalance,
             Offset = (query.Page - 1) * query.PageSize,
             query.PageSize
         })).ToList();
+
+        return new OutstandingBalancesResponse(items, query.Page, query.PageSize);
     }
 }

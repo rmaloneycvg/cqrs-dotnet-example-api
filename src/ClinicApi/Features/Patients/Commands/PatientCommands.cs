@@ -64,3 +64,6 @@ public record BatchUpdateResult(int TotalCount, int SuccessCount, int FailureCou
 public record PurgeExpiredRecords(DateTime OlderThan);
 
 public record PurgeResult(int DeletedCount);
+
+// Soft-delete: deactivate a single patient by ID
+public record DeactivatePatient(Guid Id);

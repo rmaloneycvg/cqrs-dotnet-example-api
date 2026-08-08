@@ -1,8 +1,7 @@
 using System.Net;
 using Alba;
 using ClinicApi.Features.Billing.Commands;
-using ClinicApi.Features.Billing.Queries;
-using ClinicApi.Features.Patients.Commands;
+using ClinicApi.Features.Billing.Queries;using ClinicApi.Features.Patients.Commands;
 using ClinicApi.Integration.Fixtures;
 using FluentAssertions;
 
@@ -91,14 +90,15 @@ public class BillingEndpointTests
         // Act
         var result = await _fixture.Host.Scenario(s =>
         {
-            s.Get.Url("/api/billing/outstanding?minBalance=0.01");
+            s.Get.Url("/api/billing/outstanding?minBalance=0.01&page=1&pageSize=50");
             s.StatusCodeShouldBe(HttpStatusCode.OK);
         });
 
         // Assert
-        var response = result.ReadAsJson<List<OutstandingBalanceDto>>();
+        var response = result.ReadAsJson<OutstandingBalancesResponse>();
         response.Should().NotBeNull();
-        response.Should().NotBeEmpty();
+        response!.Items.Should().NotBeEmpty();
+        response.Page.Should().Be(1);
     }
 
     private async Task<CreatePatientResponse> CreatePatient()

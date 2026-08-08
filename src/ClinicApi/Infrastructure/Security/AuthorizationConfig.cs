@@ -70,8 +70,9 @@ public static class AuthorizationConfig
 }
 
 /// <summary>
-/// Development-only auth handler that auto-authenticates all requests
-/// as a system user. Allows testing without a real identity provider.
+/// Development-only auth handler that auto-authenticates all requests.
+/// Role can be overridden via X-Dev-Role header for testing permission boundaries.
+/// Examples: curl -H "X-Dev-Role: nurse" localhost:5000/api/patients
 /// NEVER used in staging/production (FallbackPolicy enforces real JWT).
 /// </summary>
 public class DevAuthOptions : Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions { }
@@ -86,11 +87,15 @@ public class DevAuthHandler : Microsoft.AspNetCore.Authentication.Authentication
 
     protected override Task<Microsoft.AspNetCore.Authentication.AuthenticateResult> HandleAuthenticateAsync()
     {
+        // Allow role override via header for testing permission boundaries
+        var role = Request.Headers["X-Dev-Role"].FirstOrDefault() ?? "admin";
+        var userId = Request.Headers["X-Dev-User"].FirstOrDefault() ?? "dev-user";
+
         var claims = new[]
         {
-            new Claim(ClaimTypes.NameIdentifier, "dev-user"),
-            new Claim(ClaimTypes.Name, "Development User"),
-            new Claim("role", "admin"),
+            new Claim(ClaimTypes.NameIdentifier, userId),
+            new Claim(ClaimTypes.Name, $"Dev User ({role})"),
+            new Claim("role", role),
         };
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);

@@ -25,9 +25,9 @@ public static class BillingEndpoints
             patientId, page == 0 ? 1 : page, pageSize == 0 ? 20 : pageSize));
 
     [WolverineGet("/api/billing/outstanding")]
-    public static Task<List<OutstandingBalanceDto>> GetOutstandingBalances(
+    public static Task<OutstandingBalancesResponse> GetOutstandingBalances(
         decimal minBalance, int page, int pageSize, IMessageBus bus)
-        => bus.InvokeAsync<List<OutstandingBalanceDto>>(new GetOutstandingBalances(
+        => bus.InvokeAsync<OutstandingBalancesResponse>(new GetOutstandingBalances(
             minBalance == 0 ? 0.01m : minBalance,
             page == 0 ? 1 : page,
             pageSize == 0 ? 50 : pageSize));
