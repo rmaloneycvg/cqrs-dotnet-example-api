@@ -1,4 +1,10 @@
-.PHONY: up down build test test-unit test-integration test-performance migrate restore clean help
+.PHONY: up up-telemetry down down-clean build build-release restore clean \
+       migrate migration-add migrate-tilt migrate-container \
+       test test-unit test-integration test-performance benchmark test-coverage \
+       docker-build docker-run \
+       helm-lint helm-template-dev helm-template-staging helm-template-prod \
+       helm-install-dev helm-install-staging helm-install-prod \
+       format format-check rabbitmq-ui health help
 
 # ─── Development ──────────────────────────────────────────────────────────────
 
@@ -91,7 +97,7 @@ docker-build:
 
 ## Run Docker image locally
 docker-run:
-	docker run -p 5000:5000 --env-file .env.local clinic-api:local
+	docker run -p 5000:5000 --env-file .env.dev clinic-api:local
 
 # ─── Helm ─────────────────────────────────────────────────────────────────────
 
