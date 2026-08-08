@@ -7,14 +7,19 @@ namespace ClinicApi.Performance.LoadTests;
 /// NBomber load test scenarios for the Clinic API.
 /// These tests require a running API instance (via 'tilt up' or 'dotnet run').
 /// 
-/// To run: dotnet test tests/ClinicApi.Performance --filter "Category=Performance"
+/// Currently SKIPPED due to NBomber 6.5.0 being incompatible with Spectre.Console 0.55
+/// (pulled transitively by WolverineFx → JasperFx). The TypeLoadException for
+/// Spectre.Console.Color is a known ABI break in Spectre.Console 0.55.
+/// 
+/// To run (once NBomber is updated):
+///   dotnet test tests/ClinicApi.Performance --filter "Category=Performance"
 /// </summary>
 [Trait("Category", "Performance")]
 public class PatientApiLoadTests
 {
     private const string BaseUrl = "http://localhost:5000";
 
-    [Fact(Skip = "Requires running API instance via 'tilt up'")]
+    [Fact(Skip = "NBomber 6.5.0 incompatible with Spectre.Console 0.55 (pulled by WolverineFx). Awaiting NBomber update.")]
     public void CreatePatient_Should_HandleConcurrentLoad()
     {
         using var httpClient = new HttpClient { BaseAddress = new Uri(BaseUrl) };
@@ -50,7 +55,7 @@ public class PatientApiLoadTests
             .Run();
     }
 
-    [Fact(Skip = "Requires running API instance via 'tilt up'")]
+    [Fact(Skip = "NBomber 6.5.0 incompatible with Spectre.Console 0.55 (pulled by WolverineFx). Awaiting NBomber update.")]
     public void BatchImport_Should_HandleLargePayloads()
     {
         using var httpClient = new HttpClient
