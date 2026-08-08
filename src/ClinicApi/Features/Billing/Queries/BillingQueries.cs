@@ -4,7 +4,7 @@ using Dapper;
 namespace ClinicApi.Features.Billing.Queries;
 
 public record GetPatientBillingHistory(Guid PatientId, int Page = 1, int PageSize = 20);
-public record GetOutstandingBalances(decimal MinimumBalance = 0.01m);
+public record GetOutstandingBalances(decimal MinimumBalance = 0.01m, int Page = 1, int PageSize = 50);
 
 public record InvoiceDto(
     Guid Id,
@@ -85,9 +85,15 @@ public static class GetOutstandingBalancesHandler
             GROUP BY p.Id, p.FirstName, p.LastName
             HAVING SUM(i.Amount - i.PaidAmount) >= @MinimumBalance
             ORDER BY TotalOutstanding DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY
             """;
 
         using var connection = connectionFactory.CreateConnection();
-        return (await connection.QueryAsync<OutstandingBalanceDto>(sql, new { query.MinimumBalance })).ToList();
+        return (await connection.QueryAsync<OutstandingBalanceDto>(sql, new
+        {
+            query.MinimumBalance,
+            Offset = (query.Page - 1) * query.PageSize,
+            query.PageSize
+        })).ToList();
     }
 }

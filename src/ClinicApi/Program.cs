@@ -60,7 +60,14 @@ builder.Services.AddDbContextWithWolverineIntegration<ClinicDbContext>(options =
 // CMK credentials injected via Vault sidecar in staging/prod.
 //
 // HIPAA §164.312(b): Audit controls
-builder.Services.AddSingleton<IPhiAuditLogger, PhiAuditLogger>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IPhiAuditLogger, PhiAuditLogger>();
+
+// HIPAA §164.312(a)(1): Access controls
+builder.Services.AddClinicAuthorization(builder.Environment);
+
+// Response compression (gzip/brotli for list endpoints)
+builder.Services.AddResponseCompression();
 
 
 
@@ -183,6 +190,9 @@ var app = builder.Build();
 // Middleware
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseResponseCompression();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseHealthChecks("/health");
 
 // OpenAPI + Scalar (development only)

@@ -47,12 +47,11 @@ public class AppointmentEndpointTests
             ProviderName: "Dr. Williams",
             ScheduledAt: DateTime.UtcNow.AddDays(7));
 
-        // Act & Assert — Wolverine handlers with void return give 204 even without validation
-        // TODO: Add FluentValidation for ScheduleAppointment to enforce PatientId != Empty
+        // Act & Assert — FluentValidation rejects empty PatientId
         await _fixture.Host.Scenario(s =>
         {
             s.Post.Json(command).ToUrl("/api/appointments");
-            s.StatusCodeShouldBe(HttpStatusCode.NoContent);
+            s.StatusCodeShouldBe(HttpStatusCode.BadRequest);
         });
     }
 
