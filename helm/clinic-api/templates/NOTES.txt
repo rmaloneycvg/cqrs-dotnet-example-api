@@ -7,7 +7,7 @@ Replicas:    {{ .Values.clinicApi.replicaCount }} (API) / {{ .Values.nginxGatewa
 {{- if eq .Values.nginxGateway.service.type "ClusterIP" }}
 
 Access the API via port-forward:
-  kubectl port-forward svc/nginx-gateway {{ .Values.nginxGateway.service.httpsPort }}:443 -n {{ include "clinic-api.namespace" . }}
+  kubectl port-forward svc/nginx-gateway {{ .Values.nginxGateway.service.httpsPort }}:{{ .Values.nginxGateway.service.httpsPort }} -n {{ include "clinic-api.namespace" . }}
   curl https://localhost:{{ .Values.nginxGateway.service.httpsPort }}/api/health -k
 {{- end }}
 

@@ -78,7 +78,7 @@ mssql:
 rabbitmq:
   enabled: true
   persistence:
-    enabled: false  # Ephemeral in dev (topology pre-loaded via definitions.json ConfigMap)
+    enabled: false  # Ephemeral in dev (topology auto-provisioned by Wolverine)
 
 dbMigrate:
   enabled: true
