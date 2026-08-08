@@ -7,21 +7,34 @@ namespace ClinicApi.Performance.LoadTests;
 /// NBomber load test scenarios for the Clinic API.
 /// These tests require a running API instance (via 'tilt up' or 'dotnet run').
 /// 
-/// Currently SKIPPED due to NBomber 6.5.0 being incompatible with Spectre.Console 0.55
-/// (pulled transitively by WolverineFx → JasperFx). The TypeLoadException for
-/// Spectre.Console.Color is a known ABI break in Spectre.Console 0.55.
-/// 
-/// To run (once NBomber is updated):
-///   dotnet test tests/ClinicApi.Performance --filter "Category=Performance"
+/// To run: dotnet test tests/ClinicApi.Performance --filter "Category=Performance"
+/// Tests pass as no-op if the API is unreachable (no xUnit 2.x dynamic skip support).
 /// </summary>
 [Trait("Category", "Performance")]
 public class PatientApiLoadTests
 {
     private const string BaseUrl = "http://localhost:5000";
 
-    [Fact(Skip = "NBomber 6.5.0 incompatible with Spectre.Console 0.55 (pulled by WolverineFx). Awaiting NBomber update.")]
+    private static bool IsApiRunning()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            var response = client.GetAsync($"{BaseUrl}/health").GetAwaiter().GetResult();
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [Fact]
     public void CreatePatient_Should_HandleConcurrentLoad()
     {
+        if (!IsApiRunning())
+            return;
+
         using var httpClient = new HttpClient { BaseAddress = new Uri(BaseUrl) };
 
         var scenario = Scenario.Create("create_patient", async context =>
@@ -55,9 +68,12 @@ public class PatientApiLoadTests
             .Run();
     }
 
-    [Fact(Skip = "NBomber 6.5.0 incompatible with Spectre.Console 0.55 (pulled by WolverineFx). Awaiting NBomber update.")]
+    [Fact]
     public void BatchImport_Should_HandleLargePayloads()
     {
+        if (!IsApiRunning())
+            return;
+
         using var httpClient = new HttpClient
         {
             BaseAddress = new Uri(BaseUrl),
