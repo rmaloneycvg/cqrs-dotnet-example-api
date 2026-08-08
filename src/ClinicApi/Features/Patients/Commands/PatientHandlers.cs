@@ -22,6 +22,21 @@ public static class CreatePatientHandler
         IPhiAuditLogger audit,
         CancellationToken cancellationToken)
     {
+        // Idempotency: check for existing patient by email or external ID
+        var existing = await db.Patients
+            .Where(p => p.Email == command.Email ||
+                       (command.ExternalId != null && p.ExternalId == command.ExternalId))
+            .Select(p => new { p.Id, p.FirstName, p.LastName, p.Email })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existing is not null)
+        {
+            // Return existing patient (idempotent create)
+            var existingResponse = new CreatePatientResponse(existing.Id, $"{existing.FirstName} {existing.LastName}", existing.Email);
+            var existingEvent = new PatientCreated(existing.Id, existing.FirstName, existing.LastName, existing.Email);
+            return (existingResponse, existingEvent);
+        }
+
         var patient = new Patient
         {
             FirstName = command.FirstName,
