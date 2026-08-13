@@ -19,15 +19,15 @@
 
 param(
     [Parameter(Mandatory)]
-    [string]$ServerInstance,
+    [string]$ServerInstance, #localhost,1433
 
     [Parameter(Mandatory)]
-    [string]$Database,
+    [string]$Database, #ClinicDb
 
-    [string]$KeyVaultUrl,
+    [string]$KeyVaultUrl, # not used for local
     [string]$KeyName = "ClinicPhiMasterKey",
 
-    [switch]$UseCertStore,
+    [switch]$UseCertStore, # true if specified, -UseCertStore
 
     [string]$SqlUser = "sa",
     [string]$SqlPassword
@@ -40,7 +40,7 @@ Write-Host "=== Always Encrypted Setup for $Database ===" -ForegroundColor Cyan
 
 # ─── Step 1: Create Column Master Key ────────────────────────────────────────
 
-if ($UseCertStore) {
+if ($UseCertStore) { #local
     Write-Host "Creating CMK using local certificate store..." -ForegroundColor Yellow
     $cert = New-SelfSignedCertificate -Subject "CN=ClinicApi-AlwaysEncrypted" `
         -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable `

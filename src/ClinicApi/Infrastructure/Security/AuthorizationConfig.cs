@@ -72,7 +72,11 @@ public static class AuthorizationConfig
 /// <summary>
 /// Development-only auth handler that auto-authenticates all requests.
 /// Role can be overridden via X-Dev-Role header for testing permission boundaries.
-/// Examples: curl -H "X-Dev-Role: nurse" localhost:5000/api/patients
+/// Org can be overridden via X-Dev-Org header for testing BOLA isolation.
+/// Examples:
+///   curl -H "X-Dev-Role: nurse" localhost:5000/api/patients
+///   curl -H "X-Dev-Org: 00000000-0000-0000-0000-000000000002" localhost:5000/api/patients
+///   curl -H "X-Dev-Org: *" -H "X-Dev-Role: admin" localhost:5000/api/patients  (cross-tenant)
 /// NEVER used in staging/production (FallbackPolicy enforces real JWT).
 /// </summary>
 public class DevAuthOptions : Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions { }
@@ -90,12 +94,15 @@ public class DevAuthHandler : Microsoft.AspNetCore.Authentication.Authentication
         // Allow role override via header for testing permission boundaries
         var role = Request.Headers["X-Dev-Role"].FirstOrDefault() ?? "admin";
         var userId = Request.Headers["X-Dev-User"].FirstOrDefault() ?? "dev-user";
+        var orgId = Request.Headers["X-Dev-Org"].FirstOrDefault()
+            ?? HttpTenantContext.DevOrganizationId.ToString();
 
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, userId),
             new Claim(ClaimTypes.Name, $"Dev User ({role})"),
             new Claim("role", role),
+            new Claim("org_id", orgId),
         };
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);

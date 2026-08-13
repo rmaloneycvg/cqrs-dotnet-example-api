@@ -87,10 +87,10 @@ public class SqlBulkInsertService : IBulkInsertService
     }
 
     public async Task StreamingBulkUpdateAsync(
-        IDataReader dataReader, 
-        string tableName, 
-        string primaryKeyColumn, 
-        int timeoutSeconds = 120, 
+        IDataReader dataReader,
+        string tableName,
+        string primaryKeyColumn,
+        int timeoutSeconds = 120,
         CancellationToken cancellationToken = default)
     {
         await using var connection = new SqlConnection(_connectionString);

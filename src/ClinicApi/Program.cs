@@ -17,6 +17,8 @@ if (args.Contains("--migrate"))
     var migrateBuilder = WebApplication.CreateBuilder(args);
     var cs = migrateBuilder.Configuration.GetConnectionString("ClinicDb")
         ?? throw new InvalidOperationException("ConnectionStrings:ClinicDb is required for migration.");
+    migrateBuilder.Services.AddSingleton<ClinicApi.Infrastructure.Security.ITenantContext>(
+        new ClinicApi.Infrastructure.Security.MigrationTenantContext());
     migrateBuilder.Services.AddDbContext<ClinicDbContext>(options => options.UseSqlServer(cs));
     var migrateApp = migrateBuilder.Build();
     using var scope = migrateApp.Services.CreateScope();
@@ -38,6 +40,9 @@ var rabbitMqConnection = builder.Configuration.GetConnectionString("RabbitMq")
 // Infrastructure services (EF Core, Dapper, FluentValidation, health checks)
 builder.Services.AddClinicPersistence(connectionString);
 
+// Caching (Redis + PHI encryption — configuration-driven per endpoint)
+builder.Services.AddClinicCaching(builder.Configuration);
+
 // Security (HIPAA audit logging, JWT auth, RBAC policies)
 builder.Services.AddClinicSecurity(builder.Environment);
 
@@ -48,7 +53,19 @@ builder.AddClinicObservability();
 builder.Services.AddResponseCompression();
 builder.Services.AddProblemDetails();
 builder.Services.AddWolverineHttp();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddSchemaTransformer<ClinicApi.Infrastructure.OpenApi.FakeDataSchemaTransformer>();
+    options.AddOperationTransformer<ClinicApi.Infrastructure.OpenApi.BatchExampleTransformer>();
+    options.AddDocumentTransformer((document, context, ct) =>
+    {
+        document.Servers =
+        [
+            new() { Url = "/api", Description = "Current environment" }
+        ];
+        return Task.CompletedTask;
+    });
+});
 
 // ─── Wolverine Configuration ─────────────────────────────────────────────────
 
@@ -98,6 +115,7 @@ builder.Host.UseWolverine(opts =>
 
 var app = builder.Build();
 
+app.UsePathBase("/api");
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseResponseCompression();

@@ -1,3 +1,4 @@
+using ClinicApi.Infrastructure.Caching;
 using ClinicApi.Infrastructure.Persistence;
 using ClinicApi.Infrastructure.Security;
 using FluentValidation;
@@ -5,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using StackExchange.Redis;
 using Wolverine.EntityFrameworkCore;
 
 namespace ClinicApi.Infrastructure;
@@ -44,12 +46,50 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers HIPAA security services: audit logging, auth, encryption config.
+    /// Registers Redis connection, PHI encryption, and configurable caching services.
+    /// </summary>
+    public static IServiceCollection AddClinicCaching(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        var redisConnectionString = configuration.GetConnectionString("Redis");
+        if (string.IsNullOrEmpty(redisConnectionString))
+        {
+            // Redis not configured — register a no-op cache service
+            services.Configure<CachingOptions>(o => o.Enabled = false);
+            services.AddSingleton<ICacheService, NoOpCacheService>();
+            return services;
+        }
+
+        // Redis connection (singleton — multiplexer is thread-safe)
+        services.AddSingleton<IConnectionMultiplexer>(
+            ConnectionMultiplexer.Connect(redisConnectionString));
+
+        // PHI encryption
+        var phiKey = configuration["PHI_ENCRYPTION_KEY"]
+            ?? throw new InvalidOperationException("PHI_ENCRYPTION_KEY is required for caching.");
+        services.AddSingleton<IPhiEncryptionService>(new AesGcmPhiEncryptionService(phiKey));
+
+        // Caching configuration
+        services.Configure<CachingOptions>(configuration.GetSection(CachingOptions.SectionName));
+
+        // Cache service
+        services.AddSingleton<ICacheService, RedisCacheService>();
+
+        // Health check for Redis
+        services.AddHealthChecks()
+            .AddRedis(redisConnectionString, name: "redis");
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers HIPAA security services: audit logging, auth, encryption config, tenant context.
     /// </summary>
     public static IServiceCollection AddClinicSecurity(
         this IServiceCollection services, IWebHostEnvironment environment)
     {
         services.AddHttpContextAccessor();
+        services.AddScoped<ITenantContext, HttpTenantContext>();
         services.AddTransient<IPhiAuditLogger, PhiAuditLogger>();
         services.AddClinicAuthorization(environment);
         return services;
