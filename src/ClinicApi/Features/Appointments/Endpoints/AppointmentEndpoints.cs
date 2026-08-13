@@ -10,7 +10,7 @@ namespace ClinicApi.Features.Appointments.Endpoints;
 /// </summary>
 public static class AppointmentEndpoints
 {
-    [WolverinePost("/api/appointments")]
+    [WolverinePost("/appointments")]
     public static Task ScheduleAppointment(ScheduleAppointment command, IMessageBus bus)
         => bus.InvokeAsync(command);
 }

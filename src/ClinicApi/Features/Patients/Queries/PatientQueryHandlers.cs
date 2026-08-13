@@ -1,4 +1,7 @@
+using ClinicApi.Domain.Events;
+using ClinicApi.Infrastructure.Caching;
 using ClinicApi.Infrastructure.Persistence;
+using ClinicApi.Infrastructure.Security;
 using Dapper;
 
 namespace ClinicApi.Features.Patients.Queries;
@@ -7,14 +10,34 @@ namespace ClinicApi.Features.Patients.Queries;
 /// Query handlers use Dapper for read-side performance.
 /// Always Encrypted compatible: no server-side operations on encrypted columns.
 /// PHI audit logging handled by PhiAuditMiddleware (no per-handler injection).
+///
+/// BOLA Protection: All queries are scoped to the authenticated user's OrganizationId.
+/// Cross-tenant users (admin with org_id="*") bypass the filter.
+///
+/// Caching: When configured, GetPatientById checks Redis first (PHI encrypted at rest).
+/// On cache miss, queries DB, caches the result, and publishes CachePopulated event.
 /// </summary>
 public static class GetPatientByIdHandler
 {
-    public static async Task<PatientDto?> Handle(
+    public static async Task<(PatientDto?, CachePopulated?)> Handle(
         GetPatientById query,
-        IDbConnectionFactory connectionFactory)
+        IDbConnectionFactory connectionFactory,
+        ITenantContext tenantContext,
+        ICacheService cacheService)
     {
-        const string sql = """
+        var orgId = tenantContext.OrganizationId ?? Guid.Empty;
+
+        // Check cache first (if configured for this endpoint)
+        var cached = await cacheService.GetAsync<PatientDto>("GetPatientById", orgId, query.Id);
+        if (cached is not null)
+            return (cached, null); // Cache hit — no event needed
+
+        // Cache miss — query database
+        var orgFilter = tenantContext.OrganizationId is not null
+            ? "AND OrganizationId = @OrganizationId"
+            : "";
+
+        var sql = $"""
             SELECT Id, FirstName, LastName, DateOfBirth, Email, PhoneNumber,
                    CASE Status
                        WHEN 0 THEN 'Active'
@@ -26,13 +49,24 @@ public static class GetPatientByIdHandler
                    AddressCity AS City, AddressState AS State,
                    CreatedAt, UpdatedAt
             FROM Patients
-            WHERE Id = @Id
+            WHERE Id = @Id {orgFilter}
             """;
 
         using var connection = connectionFactory.CreateConnection();
-        var raw = await connection.QuerySingleOrDefaultAsync<PatientRawDto>(sql, new { query.Id });
+        var raw = await connection.QuerySingleOrDefaultAsync<PatientRawDto>(
+            sql, new { query.Id, tenantContext.OrganizationId });
 
-        return raw?.ToDto();
+        if (raw is null)
+            return (null, null);
+
+        var dto = raw.ToDto();
+
+        // Store in cache (encrypted PHI, plaintext metadata)
+        await cacheService.SetAsync("GetPatientById", orgId, query.Id, dto);
+
+        // Publish CachePopulated event for SignalR service awareness
+        var cacheEvent = new CachePopulated("Patient", query.Id, orgId);
+        return (dto, cacheEvent);
     }
 }
 
@@ -40,13 +74,18 @@ public static class ListPatientsHandler
 {
     public static async Task<PatientListResponse> Handle(
         ListPatients query,
-        IDbConnectionFactory connectionFactory)
+        IDbConnectionFactory connectionFactory,
+        ITenantContext tenantContext)
     {
         var offset = (query.Page - 1) * query.PageSize;
 
+        // BOLA: always scope to organization
+        var whereClause = tenantContext.OrganizationId is not null
+            ? "WHERE OrganizationId = @OrganizationId"
+            : "WHERE 1=1";
+
         // Always Encrypted: cannot use LIKE on encrypted columns.
         // Filter by Status (unencrypted) server-side, search term applied client-side.
-        var whereClause = "WHERE 1=1";
         if (query.Status is not null)
             whereClause += " AND Status = @StatusInt";
 
@@ -73,11 +112,16 @@ public static class ListPatientsHandler
 
         var statusInt = query.Status switch
         {
-            "Active" => 0, "Inactive" => 1, "Deceased" => 2, "Transferred" => 3, _ => (int?)null
+            "Active" => 0,
+            "Inactive" => 1,
+            "Deceased" => 2,
+            "Transferred" => 3,
+            _ => (int?)null
         };
 
         var parameters = new
         {
+            tenantContext.OrganizationId,
             StatusInt = statusInt,
             Offset = offset,
             FetchSize = fetchSize

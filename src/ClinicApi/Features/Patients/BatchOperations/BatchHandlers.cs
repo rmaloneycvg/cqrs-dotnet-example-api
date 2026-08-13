@@ -3,6 +3,7 @@ using ClinicApi.Domain.Entities;
 using ClinicApi.Domain.Events;
 using ClinicApi.Domain.ValueObjects;
 using ClinicApi.Infrastructure.Persistence;
+using ClinicApi.Infrastructure.Security;
 using Dapper;
 using Microsoft.EntityFrameworkCore;
 using Wolverine;
@@ -30,9 +31,24 @@ public static class ImportPatientsBatchHandler
         foreach (var chunk in chunks)
         {
             var patients = new List<Patient>();
+            var seenEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenExternalIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var dto in chunk)
             {
+                // Intra-batch deduplication
+                if (!seenEmails.Add(dto.Email))
+                {
+                    errors.Add($"Duplicate Email in batch: {dto.Email}");
+                    continue;
+                }
+
+                if (dto.ExternalId is not null && !seenExternalIds.Add(dto.ExternalId))
+                {
+                    errors.Add($"Duplicate ExternalId in batch: {dto.ExternalId}");
+                    continue;
+                }
+
                 // Idempotency: skip duplicates by ExternalId
                 if (dto.ExternalId is not null)
                 {
@@ -43,6 +59,15 @@ public static class ImportPatientsBatchHandler
                         errors.Add($"Duplicate ExternalId: {dto.ExternalId}");
                         continue;
                     }
+                }
+
+                // Skip duplicates by Email (unique per organization)
+                var emailExists = await db.Patients
+                    .AnyAsync(p => p.Email == dto.Email, cancellationToken);
+                if (emailExists)
+                {
+                    errors.Add($"Duplicate Email: {dto.Email}");
+                    continue;
                 }
 
                 patients.Add(new Patient
@@ -81,16 +106,37 @@ public static class ImportPatientsBatchHandler
 /// High-volume bulk import using SqlBulkCopy.
 /// For 10k+ rows where EF Core AddRange is too slow.
 /// Maps patient data to a DataTable for SqlBulkCopy consumption.
+/// Deduplicates within the batch by Email and ExternalId before inserting.
 /// </summary>
 public static class BulkImportPatientsHandler
 {
     public static async Task<(Commands.BatchImportResult, PatientsBatchImported)> Handle(
         Commands.BulkImportPatients command,
         IBulkInsertService bulkInsertService,
+        ClinicDbContext db,
+        ITenantContext tenantContext,
         CancellationToken cancellationToken)
     {
+        var orgId = tenantContext.OrganizationId ?? HttpTenantContext.DevOrganizationId;
+        var errors = new List<string>();
+        var seenEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenExternalIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Pre-fetch existing emails and externalIds for conflict detection
+        var existingEmails = await db.Patients
+            .Select(p => p.Email)
+            .ToListAsync(cancellationToken);
+        var existingEmailSet = new HashSet<string>(existingEmails, StringComparer.OrdinalIgnoreCase);
+
+        var existingExternalIds = await db.Patients
+            .Where(p => p.ExternalId != null)
+            .Select(p => p.ExternalId!)
+            .ToListAsync(cancellationToken);
+        var existingExternalIdSet = new HashSet<string>(existingExternalIds, StringComparer.OrdinalIgnoreCase);
+
         var dataTable = new DataTable();
         dataTable.Columns.Add("Id", typeof(Guid));
+        dataTable.Columns.Add("OrganizationId", typeof(Guid));
         dataTable.Columns.Add("FirstName", typeof(string));
         dataTable.Columns.Add("LastName", typeof(string));
         dataTable.Columns.Add("DateOfBirth", typeof(DateTime));
@@ -109,8 +155,35 @@ public static class BulkImportPatientsHandler
 
         foreach (var dto in command.Patients)
         {
+            // Intra-batch deduplication
+            if (!seenEmails.Add(dto.Email))
+            {
+                errors.Add($"Duplicate Email in batch: {dto.Email}");
+                continue;
+            }
+
+            if (dto.ExternalId is not null && !seenExternalIds.Add(dto.ExternalId))
+            {
+                errors.Add($"Duplicate ExternalId in batch: {dto.ExternalId}");
+                continue;
+            }
+
+            // Check against existing DB records
+            if (existingEmailSet.Contains(dto.Email))
+            {
+                errors.Add($"Duplicate Email: {dto.Email}");
+                continue;
+            }
+
+            if (dto.ExternalId is not null && existingExternalIdSet.Contains(dto.ExternalId))
+            {
+                errors.Add($"Duplicate ExternalId: {dto.ExternalId}");
+                continue;
+            }
+
             dataTable.Rows.Add(
                 Guid.NewGuid(),
+                orgId,
                 dto.FirstName,
                 dto.LastName,
                 dto.DateOfBirth.ToDateTime(TimeOnly.MinValue),
@@ -128,11 +201,16 @@ public static class BulkImportPatientsHandler
                 DateTime.UtcNow);
         }
 
-        await bulkInsertService.BulkInsertAsync<Patient>(
-            dataTable, "Patients", command.BatchSize, cancellationToken: cancellationToken);
+        var successCount = dataTable.Rows.Count;
+
+        if (successCount > 0)
+        {
+            await bulkInsertService.BulkInsertAsync<Patient>(
+                dataTable, "Patients", command.BatchSize, cancellationToken: cancellationToken);
+        }
 
         var result = new Commands.BatchImportResult(
-            command.Patients.Count, command.Patients.Count, 0, []);
+            command.Patients.Count, successCount, command.Patients.Count - successCount, errors);
 
         var @event = new PatientsBatchImported(result.TotalCount, result.SuccessCount, result.FailureCount);
 

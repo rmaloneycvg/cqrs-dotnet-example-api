@@ -1,4 +1,5 @@
 using ClinicApi.Infrastructure.Persistence;
+using ClinicApi.Infrastructure.Security;
 using Dapper;
 
 namespace ClinicApi.Features.Billing.Queries;
@@ -27,9 +28,14 @@ public static class GetPatientBillingHistoryHandler
 {
     public static async Task<BillingHistoryResponse> Handle(
         GetPatientBillingHistory query,
-        IDbConnectionFactory connectionFactory)
+        IDbConnectionFactory connectionFactory,
+        ITenantContext tenantContext)
     {
-        const string sql = """
+        var orgFilter = tenantContext.OrganizationId is not null
+            ? "AND i.OrganizationId = @OrganizationId"
+            : "";
+
+        var sql = $"""
             SELECT Id, InvoiceNumber, Amount, PaidAmount,
                    (Amount - PaidAmount) AS OutstandingBalance,
                    CASE Status
@@ -42,21 +48,22 @@ public static class GetPatientBillingHistoryHandler
                        ELSE 'Unknown'
                    END AS Status,
                    IssuedAt, DueDate, Description
-            FROM Invoices
-            WHERE PatientId = @PatientId
+            FROM Invoices i
+            WHERE PatientId = @PatientId {orgFilter}
             ORDER BY IssuedAt DESC
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
 
-            SELECT COUNT(*) FROM Invoices WHERE PatientId = @PatientId;
-            SELECT ISNULL(SUM(Amount - PaidAmount), 0) FROM Invoices
-            WHERE PatientId = @PatientId AND Status IN (1, 3, 4);
+            SELECT COUNT(*) FROM Invoices i WHERE PatientId = @PatientId {orgFilter};
+            SELECT ISNULL(SUM(Amount - PaidAmount), 0) FROM Invoices i
+            WHERE PatientId = @PatientId AND Status IN (1, 3, 4) {orgFilter};
             """;
 
         var parameters = new
         {
             query.PatientId,
             Offset = (query.Page - 1) * query.PageSize,
-            query.PageSize
+            query.PageSize,
+            tenantContext.OrganizationId
         };
 
         using var connection = connectionFactory.CreateConnection();
@@ -74,16 +81,21 @@ public static class GetOutstandingBalancesHandler
 {
     public static async Task<OutstandingBalancesResponse> Handle(
         GetOutstandingBalances query,
-        IDbConnectionFactory connectionFactory)
+        IDbConnectionFactory connectionFactory,
+        ITenantContext tenantContext)
     {
-        const string sql = """
+        var orgFilter = tenantContext.OrganizationId is not null
+            ? "AND p.OrganizationId = @OrganizationId AND i.OrganizationId = @OrganizationId"
+            : "";
+
+        var sql = $"""
             SELECT p.Id AS PatientId,
                    p.FirstName + ' ' + p.LastName AS PatientName,
                    SUM(i.Amount - i.PaidAmount) AS TotalOutstanding,
                    COUNT(i.Id) AS InvoiceCount
             FROM Patients p
             INNER JOIN Invoices i ON p.Id = i.PatientId
-            WHERE i.Status IN (1, 3, 4)
+            WHERE i.Status IN (1, 3, 4) {orgFilter}
             GROUP BY p.Id, p.FirstName, p.LastName
             HAVING SUM(i.Amount - i.PaidAmount) >= @MinimumBalance
             ORDER BY TotalOutstanding DESC
@@ -95,7 +107,8 @@ public static class GetOutstandingBalancesHandler
         {
             query.MinimumBalance,
             Offset = (query.Page - 1) * query.PageSize,
-            query.PageSize
+            query.PageSize,
+            tenantContext.OrganizationId
         })).ToList();
 
         return new OutstandingBalancesResponse(items, query.Page, query.PageSize);
