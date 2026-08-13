@@ -60,8 +60,11 @@ k8s_yaml(helm(
     set=[
         'secrets.data.SA_PASSWORD=' + helm_escape(_secrets.get('SA_PASSWORD', '')),
         'secrets.data.RABBITMQ_DEFAULT_PASS=' + helm_escape(_secrets.get('RABBITMQ_DEFAULT_PASS', '')),
+        'secrets.data.REDIS_PASSWORD=' + helm_escape(_secrets.get('REDIS_PASSWORD', '')),
+        'secrets.data.PHI_ENCRYPTION_KEY=' + helm_escape(_secrets.get('PHI_ENCRYPTION_KEY', '')),
         'secrets.data.ConnectionStrings__ClinicDb=' + helm_escape(_secrets.get('ConnectionStrings__ClinicDb', '')),
         'secrets.data.ConnectionStrings__RabbitMq=' + helm_escape(_secrets.get('ConnectionStrings__RabbitMq', '')),
+        'secrets.data.ConnectionStrings__Redis=' + helm_escape(_secrets.get('ConnectionStrings__Redis', '')),
     ],
 ))
 
@@ -83,15 +86,11 @@ docker_build(
     context='.',
     dockerfile='docker/api/Dockerfile',
     target='development',
-    ignore=[
-        'tests/',
-        'docs/',
-        'helm/',
-        '*.md',
-        'Makefile',
-        'Tiltfile',
-        '.git/',
-        'coverage/',
+    only=[
+        'docker/api/',
+        'src/ClinicApi/',
+        'global.json',
+        'Directory.Build.props',
     ],
     live_update=[
         # Full rebuild if project file or build props change
@@ -102,6 +101,45 @@ docker_build(
         ]),
         # Sync source for dotnet watch hot-reload
         sync('./src', '/src/src'),
+    ],
+)
+
+# SignalR Realtime Service with live_update
+docker_build(
+    'signalr-service-image',
+    context='.',
+    dockerfile='docker/realtime/Dockerfile',
+    target='development',
+    only=[
+        'docker/realtime/',
+        'src/ClinicApi.Realtime/',
+        'src/ClinicApi/Domain/Events/',
+        'global.json',
+        'Directory.Build.props',
+    ],
+    live_update=[
+        fall_back_on([
+            './src/ClinicApi.Realtime/ClinicApi.Realtime.csproj',
+            './global.json',
+            './Directory.Build.props',
+        ]),
+        sync('./src', '/src/src'),
+    ],
+)
+
+# React Web App with live_update
+docker_build(
+    'web-app-image',
+    context='.',
+    dockerfile='docker/web/Dockerfile',
+    target='development',
+    only=[
+        'docker/web/',
+        'web/',
+    ],
+    live_update=[
+        fall_back_on(['./web/package.json', './web/package-lock.json']),
+        sync('./web', '/app'),
     ],
 )
 
@@ -131,12 +169,32 @@ k8s_resource(
     labels=['infra'],
 )
 
+k8s_resource(
+    objects=[
+        'default-deny-all:networkpolicy',
+        'allow-ingress-to-nginx-gateway:networkpolicy',
+        'allow-nginx-gateway-to-api:networkpolicy',
+        'allow-api-to-mssql:networkpolicy',
+        'allow-api-to-rabbitmq:networkpolicy',
+        'allow-services-to-redis:networkpolicy',
+        'allow-dns-egress:networkpolicy',
+        'allow-api-egress:networkpolicy',
+        'allow-signalr-service-egress:networkpolicy',
+        'allow-nginx-gateway-egress:networkpolicy',
+    ],
+    new_name='3b-network-policies',
+    labels=['infra'],
+)
+
 # 4-5. Infrastructure (databases & messaging — no deps on app)
 k8s_resource(
     'mssql',
     new_name='4-mssql',
     labels=['infra'],
-    port_forwards=['1433:1433'],
+    port_forwards=[
+        port_forward(1433, 1433, name='MSSQL'),
+    ],
+    objects=['mssql-data:persistentvolumeclaim'],
 )
 
 k8s_resource(
@@ -153,22 +211,59 @@ k8s_resource(
     objects=['rabbitmq-config:configmap'],
 )
 
+k8s_resource(
+    'redis',
+    new_name='5b-redis',
+    labels=['infra'],
+    port_forwards=[
+        port_forward(6379, 6379, name='Redis'),
+    ],
+    objects=[
+        'redis-config:configmap',
+        'redis-data:persistentvolumeclaim',
+    ],
+)
+
+k8s_resource(
+    'mock-oauth2',
+    new_name='4b-mock-oauth2',
+    labels=['infra'],
+    port_forwards=[
+        port_forward(9090, 8080, name='OAuth2 Server'),
+    ],
+    links=[
+        link('http://localhost:9090/default/.well-known/openid-configuration', 'OIDC Discovery'),
+        link('http://localhost:9090/default/debugger', 'Token Debugger'),
+    ],
+)
+
 # 6. Application (depends on infra)
 k8s_resource(
     'clinic-api',
     new_name='6-clinic-api',
     labels=['app'],
-    port_forwards=[
-        port_forward(5000, 5000, name='API'),
-    ],
-    resource_deps=['4-mssql', '5-rabbitmq'],
+    resource_deps=['4-mssql', '5-rabbitmq', '5b-redis'],
     links=[
-        link('http://localhost:5000/health', 'Health Check'),
-        link('http://localhost:5000/scalar/v1', 'Scalar API Docs'),
+        link('https://localhost:8443/api/patients', 'API: Patients (via Gateway)'),
+        link('https://localhost:8443/health', 'Health Check (via Gateway)'),
     ],
 )
 
-# 7. Gateway (depends on API being up)
+k8s_resource(
+    'signalr-service',
+    new_name='6b-signalr-service',
+    labels=['app'],
+    resource_deps=['5-rabbitmq', '5b-redis', '4b-mock-oauth2'],
+)
+
+k8s_resource(
+    'web-app',
+    new_name='6c-web-app',
+    labels=['app'],
+    # No resource_deps — Next.js dev server starts independently and proxies when ready
+)
+
+# 7. Gateway (depends on all app services)
 k8s_resource(
     'nginx-gateway',
     new_name='7-nginx-gateway',
@@ -177,21 +272,22 @@ k8s_resource(
         port_forward(8443, 8443, name='HTTPS'),
         port_forward(8080, 8080, name='HTTP'),
     ],
-    resource_deps=['6-clinic-api'],
+    resource_deps=['6-clinic-api', '6b-signalr-service'],
     objects=['nginx-config:configmap'],
     links=[
-        link('https://localhost:8443', 'Gateway (HTTPS)'),
+        link('https://localhost:8443', 'Clinic Dashboard'),
+        link('https://localhost:8443/api/scalar/v1', 'API Docs (Scalar)'),
+        link('https://localhost:8443/api/patients', 'API: Patients'),
+        link('https://localhost:8443/rabbitmq/', 'RabbitMQ Management'),
     ],
 )
 
-# 8. Database Migration (manual trigger — run after infra is healthy)
+# 8. Database Migration (auto-runs after MSSQL is ready in dev)
 k8s_resource(
     'db-migrate-manual',
     new_name='8-db-migrate',
     labels=['tooling'],
     resource_deps=['4-mssql'],
-    auto_init=False,
-    trigger_mode=TRIGGER_MODE_MANUAL,
 )
 
 # ─── Telemetry (optional) ────────────────────────────────────────────────────

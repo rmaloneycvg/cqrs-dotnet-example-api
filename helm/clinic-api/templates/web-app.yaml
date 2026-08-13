@@ -1,0 +1,70 @@
+{{- if .Values.webApp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    app: web-app
+spec:
+  replicas: {{ .Values.webApp.replicaCount }}
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+        - name: web-app
+          image: "{{ .Values.webApp.image.repository }}:{{ .Values.webApp.image.tag }}"
+          imagePullPolicy: {{ .Values.webApp.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.webApp.env.NODE_ENV | default "production" | quote }}
+            - name: NEXT_PUBLIC_API_URL
+              value: {{ .Values.webApp.env.NEXT_PUBLIC_API_URL | quote }}
+            - name: NEXT_PUBLIC_SIGNALR_URL
+              value: {{ .Values.webApp.env.NEXT_PUBLIC_SIGNALR_URL | quote }}
+            {{- if .Values.webApp.env.NEXT_PUBLIC_OAUTH2_URL }}
+            - name: NEXT_PUBLIC_OAUTH2_URL
+              value: {{ .Values.webApp.env.NEXT_PUBLIC_OAUTH2_URL | quote }}
+            {{- end }}
+            - name: NEXT_PUBLIC_AUTH_MODE
+              value: {{ .Values.webApp.env.NEXT_PUBLIC_AUTH_MODE | default "oidc" | quote }}
+          resources:
+            {{- toYaml .Values.webApp.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app-service
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: web-app
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+  type: ClusterIP
+{{- end }}

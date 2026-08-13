@@ -25,12 +25,12 @@ clinicApi:
       memory: "512Mi"
       cpu: "500m"
   readinessProbe:
-    path: /health
+    path: /api/health
     initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
   livenessProbe:
-    path: /health
+    path: /api/health
     initialDelaySeconds: 30
     periodSeconds: 15
     timeoutSeconds: 5
@@ -93,6 +93,8 @@ nginxGateway:
     enabled: true
     maxSize: "100m"
     validDuration: "1m"
+  securityHeaders:
+    contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss: https:;"
 
 # ─── MSSQL ───────────────────────────────────────────────────────────────────
 mssql:
@@ -133,6 +135,94 @@ rabbitmq:
     enabled: false
     size: "5Gi"
     storageClass: ""
+
+# ─── Redis ────────────────────────────────────────────────────────────────────
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  maxMemory: "256mb"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+  persistence:
+    enabled: false
+    size: "2Gi"
+    storageClass: ""
+
+# ─── SignalR Realtime Service ─────────────────────────────────────────────────
+signalrService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: signalr-service
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  port: 5001
+  securityContext:
+    readOnlyRootFilesystem: true
+  env:
+    ASPNETCORE_ENVIRONMENT: Production
+    ASPNETCORE_URLS: "http://+:5001"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+
+# ─── Web App (React/Next.js) ─────────────────────────────────────────────────
+webApp:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: web-app
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  env:
+    NODE_ENV: production
+    NEXT_PUBLIC_API_URL: "http://clinic-api-service:5000"
+    NEXT_PUBLIC_SIGNALR_URL: "http://signalr-service:5001/realtime-hub"
+    NEXT_PUBLIC_AUTH_MODE: "oidc"
+    NEXT_PUBLIC_OAUTH2_URL: ""
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# ─── Mock OAuth2 Server (dev only) ────────────────────────────────────────────
+mockOAuth2:
+  enabled: false
+  image:
+    repository: ghcr.io/navikt/mock-oauth2-server
+    tag: "2.1.10"
+    pullPolicy: IfNotPresent
+  defaultOrgId: "00000000-0000-0000-0000-000000000001"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
 
 # ─── Database Migration Job ──────────────────────────────────────────────────
 dbMigrate:

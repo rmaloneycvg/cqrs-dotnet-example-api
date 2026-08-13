@@ -110,11 +110,41 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "clinic-api.selectorLabels" . | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "signalr-service.selectorLabels" . | nindent 14 }}
       ports:
         - protocol: TCP
           port: 5672
         - protocol: TCP
           port: 15672
+---
+# ─── Allow: API + SignalR Service → Redis ─────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-services-to-redis
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "redis.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "clinic-api.selectorLabels" . | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "signalr-service.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 6379
 ---
 # ─── Allow: DNS Egress (all pods need DNS) ───────────────────────────────────
 apiVersion: networking.k8s.io/v1
@@ -140,7 +170,7 @@ spec:
         - protocol: TCP
           port: 53
 ---
-# ─── Allow: API Egress to MSSQL + RabbitMQ ───────────────────────────────────
+# ─── Allow: API Egress to MSSQL + RabbitMQ + Redis ───────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -170,8 +200,55 @@ spec:
       ports:
         - protocol: TCP
           port: 5672
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "redis.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 6379
 ---
-# ─── Allow: NGINX Gateway Egress to API + RabbitMQ Management ─────────────────
+# ─── Allow: SignalR Service Egress to RabbitMQ + Redis ────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-signalr-service-egress
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    security-ring: "2"
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "signalr-service.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "rabbitmq.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 5672
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "redis.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 6379
+    {{- if .Values.mockOAuth2.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mock-oauth2
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+---
+# ─── Allow: NGINX Gateway Egress to API + SignalR Service + RabbitMQ Mgmt ─────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -197,8 +274,24 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              {{- include "signalr-service.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 5001
+    - to:
+        - podSelector:
+            matchLabels:
               {{- include "rabbitmq.selectorLabels" . | nindent 14 }}
       ports:
         - protocol: TCP
           port: 15672
+    {{- if .Values.mockOAuth2.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mock-oauth2
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
 {{- end }}

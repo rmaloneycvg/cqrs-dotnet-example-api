@@ -25,12 +25,12 @@ clinicApi:
       cpu: "2000m"
   # SDK cold start (restore + build) takes 40-60s
   readinessProbe:
-    path: /health
+    path: /api/health
     initialDelaySeconds: 60
     periodSeconds: 10
     timeoutSeconds: 5
   livenessProbe:
-    path: /health
+    path: /api/health
     initialDelaySeconds: 90
     periodSeconds: 20
     timeoutSeconds: 5
@@ -60,6 +60,9 @@ nginxGateway:
       burst: 10
   rabbitmqManagement:
     enabled: true
+  securityHeaders:
+    # Relaxed for dev: Scalar API docs and Next.js HMR require inline scripts
+    contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' wss: https: http:; font-src 'self' data:;"
 
 mssql:
   enabled: true
@@ -79,6 +82,70 @@ rabbitmq:
   enabled: true
   persistence:
     enabled: false  # Ephemeral in dev (topology auto-provisioned by Wolverine)
+
+redis:
+  enabled: true
+  persistence:
+    enabled: true   # Persist cache data across restarts
+    size: "1Gi"
+    storageClass: ""
+
+signalrService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: signalr-service-image
+    tag: "latest"
+    pullPolicy: Never
+  securityContext:
+    readOnlyRootFilesystem: false  # SDK needs writable fs for hot-reload
+  env:
+    ASPNETCORE_ENVIRONMENT: Development
+    ASPNETCORE_URLS: "http://+:5001"
+    Auth__Authority: "http://mock-oauth2:8080/default"
+    Auth__Audience: "api://clinic-api"
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+  readinessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 5
+  livenessProbe:
+    initialDelaySeconds: 90
+    periodSeconds: 20
+    timeoutSeconds: 5
+
+mockOAuth2:
+  enabled: true
+  image:
+    pullPolicy: IfNotPresent  # No local build needed — pulled from registry
+  defaultOrgId: "00000000-0000-0000-0000-000000000001"
+
+webApp:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: web-app-image
+    tag: "latest"
+    pullPolicy: Never
+  env:
+    NODE_ENV: development
+    NEXT_PUBLIC_API_URL: "https://localhost:8443"
+    NEXT_PUBLIC_SIGNALR_URL: "https://localhost:8443/realtime-hub"
+    NEXT_PUBLIC_OAUTH2_URL: "https://localhost:8443/oauth2/default"
+    NEXT_PUBLIC_AUTH_MODE: "dev"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
 
 dbMigrate:
   enabled: true

@@ -69,6 +69,27 @@ data:
             keepalive 16;
         }
 
+        {{- if .Values.signalrService.enabled }}
+        upstream signalr_service {
+            server signalr-service:5001;
+            keepalive 16;
+        }
+        {{- end }}
+
+        {{- if .Values.mockOAuth2.enabled }}
+        upstream mock_oauth2 {
+            server mock-oauth2:8080;
+            keepalive 4;
+        }
+        {{- end }}
+
+        {{- if .Values.webApp.enabled }}
+        upstream web_app {
+            server web-app-service:3000;
+            keepalive 16;
+        }
+        {{- end }}
+
         {{- if .Values.nginxGateway.rabbitmqManagement.enabled }}
         upstream rabbitmq_management {
             server rabbitmq-service:15672;
@@ -118,7 +139,7 @@ data:
             add_header Referrer-Policy "strict-origin-when-cross-origin" always;
             add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
             add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-            add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss: https:;" always;
+            add_header Content-Security-Policy "{{ .Values.nginxGateway.securityHeaders.contentSecurityPolicy }}" always;
 
             client_max_body_size 10m;
 
@@ -146,7 +167,7 @@ data:
                 add_header Access-Control-Allow-Credentials "true" always;
                 add_header Access-Control-Expose-Headers "X-Request-ID, X-Correlation-ID" always;
 
-                proxy_pass http://clinic_api/;
+                proxy_pass http://clinic_api;
                 proxy_http_version 1.1;
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
@@ -191,7 +212,7 @@ data:
                 add_header Access-Control-Allow-Origin $cors_origin always;
                 add_header Access-Control-Allow-Credentials "true" always;
 
-                proxy_pass http://clinic_api/auth/;
+                proxy_pass http://clinic_api;
                 proxy_http_version 1.1;
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
@@ -207,7 +228,7 @@ data:
 
             # ─── Health Endpoint ─────────────────────────────────────────
             location = /health {
-                proxy_pass http://clinic_api/health;
+                proxy_pass http://clinic_api/api/health;
                 proxy_http_version 1.1;
                 proxy_set_header Host $host;
                 proxy_set_header Connection "";
@@ -231,9 +252,10 @@ data:
             }
             {{- end }}
 
-            # ─── WebSocket Support ───────────────────────────────────────
-            location /ws/ {
-                proxy_pass http://clinic_api/ws/;
+            # ─── SignalR Realtime Hub (WebSocket) ────────────────────────
+            {{- if .Values.signalrService.enabled }}
+            location /realtime-hub {
+                proxy_pass http://signalr_service/realtime-hub;
                 proxy_http_version 1.1;
                 proxy_set_header Upgrade $http_upgrade;
                 proxy_set_header Connection "upgrade";
@@ -242,17 +264,44 @@ data:
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto $scheme;
                 proxy_set_header X-Request-ID $req_id;
-                proxy_set_header X-Correlation-ID $http_x_correlation_id;
                 proxy_read_timeout 3600s;
                 proxy_send_timeout 3600s;
                 proxy_cache off;
             }
+            {{- end }}
 
-            # ─── Catch-All ───────────────────────────────────────────────
+            # ─── Mock OAuth2 Server (dev only) ───────────────────────────
+            {{- if .Values.mockOAuth2.enabled }}
+            location /oauth2/ {
+                proxy_pass http://mock_oauth2/;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_cache off;
+            }
+            {{- end }}
+
+            # ─── Web App (React/Next.js — catch-all) ─────────────────────
+            {{- if .Values.webApp.enabled }}
+            location / {
+                proxy_pass http://web_app;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_cache off;
+            }
+            {{- else }}
             location / {
                 return 404 '{"error": "Not Found"}\n';
                 add_header Content-Type application/json always;
             }
+            {{- end }}
         }
     }
 {{- end }}

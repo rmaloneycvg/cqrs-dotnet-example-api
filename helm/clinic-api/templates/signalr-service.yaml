@@ -1,0 +1,82 @@
+{{- if .Values.signalrService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signalr-service
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+    {{- include "signalr-service.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.signalrService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "signalr-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signalr-service.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.security.ring4.rbac.serviceAccountName | default "default" }}
+      containers:
+        - name: signalr-service
+          image: "{{ .Values.signalrService.image.repository }}:{{ .Values.signalrService.image.tag }}"
+          imagePullPolicy: {{ .Values.signalrService.image.pullPolicy }}
+          ports:
+            - containerPort: 5001
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Values.clinicApi.secretRef }}
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: {{ .Values.signalrService.env.ASPNETCORE_ENVIRONMENT | default "Production" | quote }}
+            - name: ASPNETCORE_URLS
+              value: {{ .Values.signalrService.env.ASPNETCORE_URLS | default "http://+:5001" | quote }}
+            {{- if .Values.signalrService.env.Auth__Authority }}
+            - name: Auth__Authority
+              value: {{ .Values.signalrService.env.Auth__Authority | quote }}
+            {{- end }}
+            {{- if .Values.signalrService.env.Auth__Audience }}
+            - name: Auth__Audience
+              value: {{ .Values.signalrService.env.Auth__Audience | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.signalrService.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: {{ .Values.signalrService.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.signalrService.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.signalrService.readinessProbe.timeoutSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: {{ .Values.signalrService.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.signalrService.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.signalrService.livenessProbe.timeoutSeconds }}
+          securityContext:
+            readOnlyRootFilesystem: {{ .Values.signalrService.securityContext.readOnlyRootFilesystem }}
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: signalr-service
+  namespace: {{ include "clinic-api.namespace" . }}
+  labels:
+    {{- include "clinic-api.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "signalr-service.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: 5001
+      targetPort: 5001
+      name: http
+  type: ClusterIP
+{{- end }}
