@@ -31,3 +31,7 @@ public record PrescriptionDiscontinued(Guid PrescriptionId, Guid PatientId, stri
 public record PatientInsuranceVerification(Guid PatientId, string PolicyNumber, string ProviderId);
 public record UpdateClaimStatus(Guid PatientId, string ClaimId, string NewStatus);
 public record InsuranceVerificationBatchCompleted(int ProcessedCount, int SuccessCount, int FailureCount);
+
+// Cache Events (used by SignalR service for subscription-based push)
+public record CachePopulated(string EntityType, Guid EntityId, Guid OrganizationId);
+public record CacheInvalidated(string EntityType, Guid EntityId, Guid OrganizationId);

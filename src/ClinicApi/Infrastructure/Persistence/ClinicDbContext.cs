@@ -1,12 +1,19 @@
 using ClinicApi.Domain.Entities;
 using ClinicApi.Domain.ValueObjects;
+using ClinicApi.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClinicApi.Infrastructure.Persistence;
 
 public class ClinicDbContext : DbContext
 {
-    public ClinicDbContext(DbContextOptions<ClinicDbContext> options) : base(options) { }
+    private readonly ITenantContext _tenantContext;
+
+    public ClinicDbContext(DbContextOptions<ClinicDbContext> options, ITenantContext tenantContext)
+        : base(options)
+    {
+        _tenantContext = tenantContext;
+    }
 
     public DbSet<Patient> Patients => Set<Patient>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
@@ -18,13 +25,22 @@ public class ClinicDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // ─── BOLA Protection: Global Query Filters ───────────────────────────
+        // Every query automatically scoped to the authenticated user's org.
+        // Cross-tenant users (admin with org_id="*") get OrganizationId=null → no filter.
+        // This prevents OWASP API1:2023 (Broken Object-Level Authorization).
+
         modelBuilder.Entity<Patient>(entity =>
         {
+            entity.HasQueryFilter(e => _tenantContext.OrganizationId == null
+                || e.OrganizationId == _tenantContext.OrganizationId);
+
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.Email).IsUnique();
+            entity.HasIndex(e => new { e.OrganizationId, e.Email }).IsUnique();
             entity.HasIndex(e => e.ExternalId).IsUnique().HasFilter("[ExternalId] IS NOT NULL");
-            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.OrganizationId, e.Status });
             entity.HasIndex(e => e.LastAppointmentAt);
+            entity.HasIndex(e => e.OrganizationId);
 
             entity.OwnsOne(e => e.Phone, phone =>
             {
@@ -59,10 +75,14 @@ public class ClinicDbContext : DbContext
 
         modelBuilder.Entity<Appointment>(entity =>
         {
+            entity.HasQueryFilter(e => _tenantContext.OrganizationId == null
+                || e.OrganizationId == _tenantContext.OrganizationId);
+
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.ProviderName, e.ScheduledAt });
             entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.OrganizationId);
 
             entity.Property(e => e.ProviderName).HasMaxLength(200);
             entity.Property(e => e.Reason).HasMaxLength(500);
@@ -71,11 +91,15 @@ public class ClinicDbContext : DbContext
 
         modelBuilder.Entity<Invoice>(entity =>
         {
+            entity.HasQueryFilter(e => _tenantContext.OrganizationId == null
+                || e.OrganizationId == _tenantContext.OrganizationId);
+
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.InvoiceNumber).IsUnique();
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.DueDate);
+            entity.HasIndex(e => e.OrganizationId);
 
             entity.Property(e => e.InvoiceNumber).HasMaxLength(50);
             entity.Property(e => e.Description).HasMaxLength(1000);
@@ -95,10 +119,14 @@ public class ClinicDbContext : DbContext
 
         modelBuilder.Entity<Payment>(entity =>
         {
+            entity.HasQueryFilter(e => _tenantContext.OrganizationId == null
+                || e.OrganizationId == _tenantContext.OrganizationId);
+
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.InvoiceId);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.TransactionId);
+            entity.HasIndex(e => e.OrganizationId);
 
             entity.Property(e => e.TransactionId).HasMaxLength(100);
             entity.Property(e => e.FailureReason).HasMaxLength(500);
@@ -112,10 +140,14 @@ public class ClinicDbContext : DbContext
 
         modelBuilder.Entity<Prescription>(entity =>
         {
+            entity.HasQueryFilter(e => _tenantContext.OrganizationId == null
+                || e.OrganizationId == _tenantContext.OrganizationId);
+
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.ExpirationDate);
+            entity.HasIndex(e => e.OrganizationId);
 
             entity.Property(e => e.MedicationName).HasMaxLength(200);
             entity.Property(e => e.Dosage).HasMaxLength(100);
@@ -123,5 +155,46 @@ public class ClinicDbContext : DbContext
             entity.Property(e => e.PrescriberName).HasMaxLength(200);
             entity.Property(e => e.Notes).HasMaxLength(2000);
         });
+    }
+
+    /// <summary>
+    /// Intercept SaveChanges to automatically stamp OrganizationId on new entities.
+    /// Prevents developers from forgetting to set the org — defense in depth.
+    /// </summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        StampOrganizationId();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        StampOrganizationId();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void StampOrganizationId()
+    {
+        var orgId = _tenantContext.OrganizationId;
+        if (orgId is null) return; // Cross-tenant or unauthenticated — don't auto-stamp
+
+        foreach (var entry in ChangeTracker.Entries<IOrganizationScoped>())
+        {
+            if (entry.State == EntityState.Added && entry.Entity.OrganizationId == Guid.Empty)
+            {
+                entry.Entity.OrganizationId = orgId.Value;
+            }
+
+            // Prevent modifying entities that belong to a different org
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+            {
+                if (entry.Entity.OrganizationId != orgId.Value)
+                {
+                    throw new UnauthorizedAccessException(
+                        $"Cannot modify entity belonging to organization {entry.Entity.OrganizationId}. " +
+                        $"Current user belongs to {orgId.Value}.");
+                }
+            }
+        }
     }
 }

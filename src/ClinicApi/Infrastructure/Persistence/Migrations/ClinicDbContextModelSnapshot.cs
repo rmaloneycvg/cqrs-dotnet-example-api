@@ -39,6 +39,9 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uniqueidentifier");
 
@@ -61,6 +64,8 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("PatientId");
 
@@ -95,6 +100,9 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("IssuedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uniqueidentifier");
 
@@ -110,6 +118,8 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("InvoiceNumber")
                         .IsUnique();
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("PatientId");
 
@@ -152,6 +162,9 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -160,16 +173,18 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
-                        .IsUnique();
-
                     b.HasIndex("ExternalId")
                         .IsUnique()
                         .HasFilter("[ExternalId] IS NOT NULL");
 
                     b.HasIndex("LastAppointmentAt");
 
-                    b.HasIndex("Status");
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("OrganizationId", "Email")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId", "Status");
 
                     b.ToTable("Patients");
                 });
@@ -193,6 +208,9 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                     b.Property<int>("Method")
                         .HasColumnType("int");
 
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uniqueidentifier");
 
@@ -209,6 +227,8 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("InvoiceId");
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("PatientId");
 
@@ -248,6 +268,9 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uniqueidentifier");
 
@@ -274,6 +297,8 @@ namespace ClinicApi.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ExpirationDate");
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("PatientId");
 

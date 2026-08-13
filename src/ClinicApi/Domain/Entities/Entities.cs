@@ -2,9 +2,19 @@ using ClinicApi.Domain.ValueObjects;
 
 namespace ClinicApi.Domain.Entities;
 
-public class Patient
+/// <summary>
+/// Marker interface for entities scoped to an organization (BOLA protection).
+/// EF Core global query filters use this to automatically scope all queries.
+/// </summary>
+public interface IOrganizationScoped
+{
+    Guid OrganizationId { get; set; }
+}
+
+public class Patient : IOrganizationScoped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OrganizationId { get; set; }
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public DateOnly DateOfBirth { get; set; }
@@ -29,9 +39,10 @@ public enum PatientStatus
     Transferred
 }
 
-public class Appointment
+public class Appointment : IOrganizationScoped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OrganizationId { get; set; }
     public Guid PatientId { get; set; }
     public string ProviderName { get; set; } = string.Empty;
     public DateTime ScheduledAt { get; set; }
@@ -55,9 +66,10 @@ public enum AppointmentStatus
     NoShow
 }
 
-public class Invoice
+public class Invoice : IOrganizationScoped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OrganizationId { get; set; }
     public Guid PatientId { get; set; }
     public string InvoiceNumber { get; set; } = string.Empty;
     public Money Amount { get; set; } = Money.Zero;
@@ -83,9 +95,10 @@ public enum InvoiceStatus
     WrittenOff
 }
 
-public class Payment
+public class Payment : IOrganizationScoped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OrganizationId { get; set; }
     public Guid InvoiceId { get; set; }
     public Guid PatientId { get; set; }
     public Money Amount { get; set; } = Money.Zero;
@@ -116,9 +129,10 @@ public enum PaymentStatus
     Refunded
 }
 
-public class Prescription
+public class Prescription : IOrganizationScoped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OrganizationId { get; set; }
     public Guid PatientId { get; set; }
     public string MedicationName { get; set; } = string.Empty;
     public string Dosage { get; set; } = string.Empty;
