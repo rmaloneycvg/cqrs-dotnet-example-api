@@ -1,13 +1,22 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
+using Bogus;
 using ClinicApi.Domain.Entities;
 using ClinicApi.Domain.ValueObjects;
 using ClinicApi.Features.Patients.Commands;
 using ClinicApi.Infrastructure.Persistence;
+using ClinicApi.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
-using Bogus;
 
 namespace ClinicApi.Performance.Benchmarks;
+
+/// <summary>Cross-tenant context for benchmarks (no query filters).</summary>
+internal class BenchmarkTenantContext : ITenantContext
+{
+    public Guid? OrganizationId => null;
+    public string? UserId => "benchmark";
+    public bool IsCrossTenant => true;
+}
 
 /// <summary>
 /// BenchmarkDotNet micro-benchmarks comparing batch insert strategies.
@@ -55,7 +64,7 @@ public class BatchInsertBenchmarks
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        await using var db = new ClinicDbContext(options);
+        await using var db = new ClinicDbContext(options, new BenchmarkTenantContext());
 
         var entities = _patients.Select(p => new Patient
         {
@@ -78,7 +87,7 @@ public class BatchInsertBenchmarks
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        await using var db = new ClinicDbContext(options);
+        await using var db = new ClinicDbContext(options, new BenchmarkTenantContext());
 
         foreach (var chunk in _patients.Chunk(500))
         {
@@ -105,7 +114,7 @@ public class BatchInsertBenchmarks
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        await using var db = new ClinicDbContext(options);
+        await using var db = new ClinicDbContext(options, new BenchmarkTenantContext());
         db.ChangeTracker.AutoDetectChangesEnabled = false;
 
         var entities = _patients.Select(p => new Patient

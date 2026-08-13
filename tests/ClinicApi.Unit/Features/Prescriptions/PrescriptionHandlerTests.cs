@@ -7,7 +7,8 @@ using ClinicApi.Unit.Shared;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
-using Wolverine;namespace ClinicApi.Unit.Features.Prescriptions;
+using Wolverine;
+namespace ClinicApi.Unit.Features.Prescriptions;
 
 [Trait("Category", "Unit")]
 public class CreatePrescriptionHandlerTests : IDisposable
@@ -19,7 +20,7 @@ public class CreatePrescriptionHandlerTests : IDisposable
         var options = new DbContextOptionsBuilder<ClinicDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        _db = new ClinicDbContext(options);
+        _db = new ClinicDbContext(options, TestTenantContext.CrossTenant());
     }
 
     [Fact]
@@ -108,7 +109,7 @@ public class DiscontinuePrescriptionHandlerTests : IDisposable
         var options = new DbContextOptionsBuilder<ClinicDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        _db = new ClinicDbContext(options);
+        _db = new ClinicDbContext(options, TestTenantContext.CrossTenant());
     }
 
     [Fact]

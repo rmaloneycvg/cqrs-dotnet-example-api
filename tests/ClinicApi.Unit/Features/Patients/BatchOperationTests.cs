@@ -18,7 +18,7 @@ public class BatchOperationHandlerTests : IDisposable
         var options = new DbContextOptionsBuilder<ClinicDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        _db = new ClinicDbContext(options);
+        _db = new ClinicDbContext(options, TestTenantContext.CrossTenant());
     }
 
     [Fact]

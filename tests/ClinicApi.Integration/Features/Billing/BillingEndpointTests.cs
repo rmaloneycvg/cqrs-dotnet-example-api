@@ -1,7 +1,8 @@
 using System.Net;
 using Alba;
 using ClinicApi.Features.Billing.Commands;
-using ClinicApi.Features.Billing.Queries;using ClinicApi.Features.Patients.Commands;
+using ClinicApi.Features.Billing.Queries;
+using ClinicApi.Features.Patients.Commands;
 using ClinicApi.Integration.Fixtures;
 using FluentAssertions;
 

@@ -20,7 +20,7 @@ public class CreateInvoiceHandlerTests : IDisposable
         var options = new DbContextOptionsBuilder<ClinicDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        _db = new ClinicDbContext(options);
+        _db = new ClinicDbContext(options, TestTenantContext.CrossTenant());
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public class BatchUpdateInvoiceStatusesHandlerTests : IDisposable
         var options = new DbContextOptionsBuilder<ClinicDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        _db = new ClinicDbContext(options);
+        _db = new ClinicDbContext(options, TestTenantContext.CrossTenant());
     }
 
     [Fact(Skip = "ExecuteUpdateAsync not supported by InMemory provider — tested in integration")]

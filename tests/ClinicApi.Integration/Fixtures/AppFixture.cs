@@ -1,5 +1,6 @@
 using Alba;
 using ClinicApi.Infrastructure.Persistence;
+using ClinicApi.Infrastructure.Security;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,6 +8,16 @@ using Testcontainers.MsSql;
 using Testcontainers.RabbitMq;
 
 namespace ClinicApi.Integration.Fixtures;
+
+/// <summary>
+/// Cross-tenant context for test infrastructure (no query filters applied).
+/// </summary>
+internal class CrossTenantContext : ITenantContext
+{
+    public Guid? OrganizationId => null;
+    public string? UserId => "integration-test";
+    public bool IsCrossTenant => true;
+}
 
 /// <summary>
 /// Shared test fixture using Testcontainers for real MSSQL and RabbitMQ.
@@ -44,7 +55,7 @@ public class AppFixture : IAsyncLifetime
         var clinicConnStr = MssqlConnectionString + ";Database=ClinicDb;TrustServerCertificate=True;";
         var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<ClinicDbContext>();
         optionsBuilder.UseSqlServer(clinicConnStr);
-        await using var dbContext = new ClinicDbContext(optionsBuilder.Options);
+        await using var dbContext = new ClinicDbContext(optionsBuilder.Options, new CrossTenantContext());
         await dbContext.Database.EnsureCreatedAsync();
 
         Host = await AlbaHost.For<Program>(builder =>

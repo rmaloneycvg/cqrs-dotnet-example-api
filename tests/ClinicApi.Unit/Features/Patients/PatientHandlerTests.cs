@@ -25,7 +25,7 @@ public class CreatePatientHandlerTests : IDisposable
         var options = new DbContextOptionsBuilder<ClinicDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        _db = new ClinicDbContext(options);
+        _db = new ClinicDbContext(options, TestTenantContext.CrossTenant());
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class UpdatePatientHandlerTests : IDisposable
         var options = new DbContextOptionsBuilder<ClinicDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        _db = new ClinicDbContext(options);
+        _db = new ClinicDbContext(options, TestTenantContext.CrossTenant());
     }
 
     [Fact]

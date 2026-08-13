@@ -18,7 +18,7 @@ public class BillingAndListLoadTests
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            var response = client.GetAsync($"{BaseUrl}/health").GetAwaiter().GetResult();
+            var response = client.GetAsync($"{BaseUrl}/api/health").GetAwaiter().GetResult();
             return response.IsSuccessStatusCode;
         }
         catch { return false; }
