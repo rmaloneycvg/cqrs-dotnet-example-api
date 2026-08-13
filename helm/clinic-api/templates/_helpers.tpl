@@ -38,6 +38,20 @@ app: rabbitmq
 {{- end }}
 
 {{/*
+Selector labels for redis
+*/}}
+{{- define "redis.selectorLabels" -}}
+app: redis
+{{- end }}
+
+{{/*
+Selector labels for signalr-service
+*/}}
+{{- define "signalr-service.selectorLabels" -}}
+app: signalr-service
+{{- end }}
+
+{{/*
 Namespace
 */}}
 {{- define "clinic-api.namespace" -}}
