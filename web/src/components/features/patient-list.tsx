@@ -1,25 +1,114 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
+import { AgGridReact } from "ag-grid-react";
+import type { ColDef, ICellRendererParams } from "ag-grid-community";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-alpine.css";
 import { usePatients } from "@/hooks/queries/use-patients";
+import { useDebounce } from "@/hooks/use-debounce";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Patient } from "@/schemas/patient.schema";
+
+function NameCellRenderer({ data }: ICellRendererParams<Patient>) {
+  if (!data) return null;
+  return (
+    <Link
+      href={`/patients/${data.id}`}
+      className="text-primary hover:underline font-medium"
+    >
+      {data.fullName}
+    </Link>
+  );
+}
+
+function StatusCellRenderer({ value }: ICellRendererParams<Patient>) {
+  const variantMap: Record<string, "success" | "secondary" | "destructive" | "default"> = {
+    Active: "success",
+    Inactive: "secondary",
+    Deceased: "destructive",
+    Transferred: "default",
+  };
+  return <Badge variant={variantMap[value] ?? "secondary"}>{value}</Badge>;
+}
+
+function DateCellRenderer({ value }: ICellRendererParams<Patient>) {
+  if (!value) return null;
+  return <span>{new Date(value).toLocaleDateString()}</span>;
+}
 
 export function PatientList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("");
+  const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading, isError, error } = usePatients({
     page,
     pageSize: 20,
     status: status || undefined,
-    searchTerm: search || undefined,
+    searchTerm: debouncedSearch || undefined,
   });
+
+  const columnDefs = useMemo<ColDef<Patient>[]>(
+    () => [
+      {
+        field: "fullName",
+        headerName: "Name",
+        cellRenderer: NameCellRenderer,
+        flex: 2,
+        minWidth: 180,
+      },
+      {
+        field: "email",
+        headerName: "Email",
+        flex: 2,
+        minWidth: 200,
+      },
+      {
+        field: "status",
+        headerName: "Status",
+        cellRenderer: StatusCellRenderer,
+        width: 130,
+      },
+      {
+        headerName: "Location",
+        valueGetter: (params) =>
+          params.data ? `${params.data.city}, ${params.data.state}` : "",
+        flex: 1,
+        minWidth: 150,
+      },
+      {
+        field: "updatedAt",
+        headerName: "Updated",
+        cellRenderer: DateCellRenderer,
+        width: 120,
+      },
+    ],
+    []
+  );
 
   if (isError) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4" role="alert">
-        <p className="text-red-800">Failed to load patients: {error.message}</p>
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4" role="alert">
+        <p className="text-destructive">Failed to load patients: {error.message}</p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Skeleton className="h-9 w-full sm:w-64" />
+          <Skeleton className="h-9 w-full sm:w-40" />
+        </div>
+        <Skeleton className="h-[600px] w-full" />
       </div>
     );
   }
@@ -27,8 +116,8 @@ export function PatientList() {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex gap-4 items-center">
-        <input
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+        <Input
           type="search"
           placeholder="Search patients..."
           value={search}
@@ -36,16 +125,16 @@ export function PatientList() {
             setSearch(e.target.value);
             setPage(1);
           }}
-          className="rounded-md border px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full sm:w-64"
           aria-label="Search patients"
         />
-        <select
+        <Select
           value={status}
           onChange={(e) => {
             setStatus(e.target.value);
             setPage(1);
           }}
-          className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full sm:w-40"
           aria-label="Filter by status"
         >
           <option value="">All Statuses</option>
@@ -53,119 +142,51 @@ export function PatientList() {
           <option value="Inactive">Inactive</option>
           <option value="Deceased">Deceased</option>
           <option value="Transferred">Transferred</option>
-        </select>
+        </Select>
         {data && (
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-muted-foreground">
             {data.totalCount} patient{data.totalCount !== 1 ? "s" : ""}
           </span>
         )}
       </div>
 
-      {/* Table */}
-      {isLoading ? (
-        <div className="animate-pulse space-y-2">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="h-12 bg-gray-100 rounded" />
-          ))}
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Name
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Email
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Status
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Location
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Updated
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {data?.items.map((patient) => (
-                <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/patients/${patient.id}`}
-                      className="text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      {patient.fullName}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {patient.email}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={patient.status} />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {patient.city}, {patient.state}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {new Date(patient.updatedAt).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-              {data?.items.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                    No patients found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* AG Grid */}
+      <div className="ag-theme-alpine rounded-lg border overflow-hidden" style={{ height: "min(600px, calc(100vh - 280px))" }}>
+        <AgGridReact<Patient>
+          rowData={data?.items ?? []}
+          columnDefs={columnDefs}
+          getRowId={(params) => params.data.id}
+          domLayout="normal"
+          suppressMovableColumns
+          animateRows
+          overlayNoRowsTemplate="<span class='text-muted-foreground'>No patients found.</span>"
+        />
+      </div>
 
       {/* Pagination */}
       {data && data.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
           >
             Previous
-          </button>
-          <span className="text-sm text-gray-600">
+          </Button>
+          <span className="text-sm text-muted-foreground">
             Page {data.page} of {data.totalPages}
           </span>
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
             disabled={page === data.totalPages}
-            className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    Active: "bg-green-100 text-green-800",
-    Inactive: "bg-gray-100 text-gray-800",
-    Deceased: "bg-red-100 text-red-800",
-    Transferred: "bg-blue-100 text-blue-800",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${colors[status] ?? "bg-gray-100 text-gray-800"}`}
-    >
-      {status}
-    </span>
   );
 }
