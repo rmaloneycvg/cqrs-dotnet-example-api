@@ -3,10 +3,14 @@
 import { useEffect } from "react";
 import { HubConnectionState } from "@microsoft/signalr";
 import { getSignalRConnection } from "@/lib/signalr";
+import { useRealtimeStore } from "@/stores/realtime.store";
 
 /**
- * Subscribe to a specific entity when the component mounts.
- * Unsubscribes when the component unmounts or the entity ID changes.
+ * Subscribe to a specific entity when the component mounts AND connection is active.
+ * Unsubscribes on unmount or entity change.
+ *
+ * Listens to connection status from the realtime store so subscriptions
+ * are established even if the component mounts before SignalR connects.
  *
  * Usage:
  *   useRealtimeSubscription("Patient", patientId);
@@ -15,8 +19,10 @@ export function useRealtimeSubscription(
   entityType: string,
   entityId: string | undefined
 ) {
+  const connectionStatus = useRealtimeStore((s) => s.status);
+
   useEffect(() => {
-    if (!entityId) return;
+    if (!entityId || connectionStatus !== "connected") return;
 
     const connection = getSignalRConnection();
     if (connection.state !== HubConnectionState.Connected) return;
@@ -28,7 +34,7 @@ export function useRealtimeSubscription(
       connection.invoke("SubscribeToEntity", entityType, entityId).catch(console.error);
     }
 
-    // Cleanup: unsubscribe on unmount or entity change
+    // Cleanup: unsubscribe on unmount or entity/connection change
     return () => {
       if (connection.state !== HubConnectionState.Connected) return;
 
@@ -38,5 +44,5 @@ export function useRealtimeSubscription(
         connection.invoke("UnsubscribeFromEntity", entityType, entityId).catch(console.error);
       }
     };
-  }, [entityType, entityId]);
+  }, [entityType, entityId, connectionStatus]);
 }

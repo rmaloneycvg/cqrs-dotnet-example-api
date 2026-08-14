@@ -3,6 +3,8 @@
 import { useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/auth.store";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 const OAUTH2_URL = process.env.NEXT_PUBLIC_OAUTH2_URL ?? "";
 const CLIENT_ID = "clinic-web";
@@ -25,7 +27,6 @@ export default function OidcLogin() {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
-  // Handle OAuth callback
   const handleCallback = useCallback(async () => {
     if (!code) return;
 
@@ -55,7 +56,6 @@ export default function OidcLogin() {
       const data = await res.json();
       sessionStorage.removeItem("pkce_code_verifier");
 
-      // Decode JWT payload to extract claims
       const payload = JSON.parse(atob(data.access_token.split(".")[1]));
 
       await loginWithToken({
@@ -69,7 +69,6 @@ export default function OidcLogin() {
       router.replace("/patients");
     } catch (err) {
       console.error("OIDC callback failed:", err);
-      // Clear callback params and show error
       router.replace("/login?error=callback_failed");
     }
   }, [code, loginWithToken, router]);
@@ -80,73 +79,105 @@ export default function OidcLogin() {
     }
   }, [isCallback, code, handleCallback]);
 
-  // Already authenticated — redirect
   if (isAuthenticated && !isCallback) {
     router.replace("/patients");
     return null;
   }
 
-  // Processing callback
   if (isCallback && code) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
-          <p className="mt-4 text-gray-600">Completing sign in...</p>
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-primary" />
+          <p className="mt-4 text-muted-foreground">Completing sign in...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-8 bg-gray-50">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Clinic Dashboard</h1>
-          <p className="mt-2 text-gray-600">
-            Sign in with your organization credentials
-          </p>
-        </div>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            Sign in failed. Please try again or contact your administrator.
+    <div className="flex min-h-screen">
+      {/* Left panel — branding (matches dev login) */}
+      <div className="hidden lg:flex lg:w-[480px] bg-sidebar text-sidebar-foreground flex-col justify-between p-10">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+              <svg className="h-6 w-6 text-primary-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">Clinic Dashboard</h1>
+              <p className="text-sm text-sidebar-foreground/60">Healthcare Platform</p>
+            </div>
           </div>
-        )}
-
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <button
-            onClick={initiateOidcLogin}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 text-center font-medium text-white hover:bg-blue-700 transition-colors"
-          >
-            Sign in with SSO
-          </button>
-
-          <p className="mt-4 text-center text-xs text-gray-400">
-            You will be redirected to your identity provider
+          <p className="mt-8 text-sm text-sidebar-foreground/70 leading-relaxed max-w-sm">
+            Secure access to patient records, appointments, and clinical workflows.
+            Protected by HIPAA-compliant authentication.
           </p>
         </div>
+        <div className="text-xs text-sidebar-foreground/40">
+          <p>Protected Health Information</p>
+          <p className="mt-1">Access is logged and audited</p>
+        </div>
+      </div>
 
-        <p className="mt-6 text-center text-xs text-gray-400">
-          Protected by HIPAA-compliant authentication
-        </p>
+      {/* Right panel — SSO button */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-10">
+        <div className="w-full max-w-sm">
+          {/* Mobile branding */}
+          <div className="lg:hidden text-center mb-8">
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+                <svg className="h-6 w-6 text-primary-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </div>
+              <h1 className="text-xl font-bold">Clinic Dashboard</h1>
+            </div>
+          </div>
+
+          <div className="mb-8 text-center lg:text-left">
+            <h2 className="text-2xl font-bold">Welcome back</h2>
+            <p className="text-muted-foreground mt-1">
+              Sign in with your organization credentials
+            </p>
+          </div>
+
+          {error && (
+            <div className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              Sign in failed. Please try again or contact your administrator.
+            </div>
+          )}
+
+          <Card>
+            <CardContent className="pt-6">
+              <Button
+                onClick={initiateOidcLogin}
+                className="w-full h-11"
+                size="lg"
+              >
+                <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                </svg>
+                Sign in with SSO
+              </Button>
+              <p className="mt-4 text-center text-xs text-muted-foreground">
+                You will be redirected to your identity provider
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
 }
 
-/**
- * Initiates OIDC Authorization Code + PKCE flow.
- */
 async function initiateOidcLogin() {
-  // Generate PKCE code verifier and challenge
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
-
-  // Store verifier for callback
   sessionStorage.setItem("pkce_code_verifier", codeVerifier);
 
-  // Build authorization URL
   const params = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_ID,

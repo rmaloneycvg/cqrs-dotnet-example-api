@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery, keepPreviousData } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import {
@@ -32,6 +32,7 @@ export function patientsQueryOptions(filters: PatientListFilters = {}) {
       );
       return PatientListResponseSchema.parse(data);
     },
+    placeholderData: keepPreviousData, // Prevents layout shift during pagination/filter changes
   });
 }
 
@@ -43,6 +44,7 @@ export function patientDetailQueryOptions(id: string) {
       return PatientSchema.parse(data);
     },
     enabled: !!id,
+    staleTime: 5 * 60 * 1000, // 5 min — detail is invalidated via SignalR push, no need to refetch aggressively
   });
 }
 

@@ -1,90 +1,112 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useLayoutEffect } from "react";
 import { HubConnectionState } from "@microsoft/signalr";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { getSignalRConnection, disconnectSignalR } from "@/lib/signalr";
 import { queryKeys } from "@/lib/query-keys";
 import { useRealtimeStore } from "@/stores/realtime.store";
 
 /**
  * Manages the SignalR connection lifecycle.
- * Connects on mount, disconnects on unmount.
+ * Connects on mount (when accessToken is available), disconnects on unmount.
  * Registers event handlers that invalidate TanStack Query cache on push events.
+ *
+ * Uses refs for queryClient and store setters to avoid reconnection on identity changes.
+ * Event handlers are registered once per connection — not re-registered on re-renders.
  */
-export function useSignalR(accessToken?: string) {
+export function useSignalR(accessToken: string | undefined) {
   const queryClient = useQueryClient();
   const setStatus = useRealtimeStore((s) => s.setStatus);
   const setLastEvent = useRealtimeStore((s) => s.setLastEvent);
-  const connectionRef = useRef<ReturnType<typeof getSignalRConnection> | null>(null);
 
-  const connect = useCallback(async () => {
-    if (!accessToken) return;
+  // Refs to avoid stale closures in event handlers without adding to effect deps
+  const queryClientRef = useRef<QueryClient>(queryClient);
+  const setLastEventRef = useRef(setLastEvent);
 
-    setStatus("connecting");
+  useLayoutEffect(() => {
+    queryClientRef.current = queryClient;
+  });
+
+  useLayoutEffect(() => {
+    setLastEventRef.current = setLastEvent;
+  });
+
+  useEffect(() => {
+    if (!accessToken) {
+      setStatus("disconnected");
+      return;
+    }
+
+    let cancelled = false;
     const connection = getSignalRConnection(accessToken);
-    connectionRef.current = connection;
 
-    // Register reconnection handlers
-    connection.onreconnecting(() => setStatus("reconnecting"));
-    connection.onreconnected(() => setStatus("connected"));
-    connection.onclose(() => setStatus("disconnected"));
+    // Register lifecycle handlers
+    connection.onreconnecting(() => {
+      if (!cancelled) setStatus("reconnecting");
+    });
+    connection.onreconnected(() => {
+      if (!cancelled) setStatus("connected");
+    });
+    connection.onclose(() => {
+      if (!cancelled) setStatus("disconnected");
+    });
 
-    // Register event handlers
-    connection.on("PatientCreated", (payload) => {
-      setLastEvent("PatientCreated");
-      queryClient.invalidateQueries({ queryKey: queryKeys.patients.lists() });
+    // Register event handlers — use refs to always read latest queryClient
+    connection.on("PatientCreated", () => {
+      setLastEventRef.current("PatientCreated");
+      queryClientRef.current.invalidateQueries({ queryKey: queryKeys.patients.lists() });
     });
 
     connection.on("PatientUpdated", (payload) => {
-      setLastEvent("PatientUpdated");
-      // Invalidate both the list and the specific detail if we have the ID
-      queryClient.invalidateQueries({ queryKey: queryKeys.patients.lists() });
+      setLastEventRef.current("PatientUpdated");
+      queryClientRef.current.invalidateQueries({ queryKey: queryKeys.patients.lists() });
       if (payload?.patientId) {
-        queryClient.invalidateQueries({
+        queryClientRef.current.invalidateQueries({
           queryKey: queryKeys.patients.detail(payload.patientId),
         });
       }
     });
 
     connection.on("PatientDeactivated", (payload) => {
-      setLastEvent("PatientDeactivated");
-      queryClient.invalidateQueries({ queryKey: queryKeys.patients.lists() });
+      setLastEventRef.current("PatientDeactivated");
+      queryClientRef.current.invalidateQueries({ queryKey: queryKeys.patients.lists() });
       if (payload?.patientId) {
-        queryClient.invalidateQueries({
+        queryClientRef.current.invalidateQueries({
           queryKey: queryKeys.patients.detail(payload.patientId),
         });
       }
     });
 
     connection.on("EntityInvalidated", (payload) => {
-      setLastEvent("EntityInvalidated");
+      setLastEventRef.current("EntityInvalidated");
       if (payload?.entityType === "Patient" && payload?.entityId) {
-        queryClient.invalidateQueries({
+        queryClientRef.current.invalidateQueries({
           queryKey: queryKeys.patients.detail(payload.entityId),
         });
       }
     });
 
     // Connect
-    try {
-      if (connection.state === HubConnectionState.Disconnected) {
-        await connection.start();
-        setStatus("connected");
+    async function start() {
+      setStatus("connecting");
+      try {
+        if (connection.state === HubConnectionState.Disconnected) {
+          await connection.start();
+          if (!cancelled) setStatus("connected");
+        }
+      } catch (err) {
+        console.error("SignalR connection failed:", err);
+        if (!cancelled) setStatus("disconnected");
       }
-    } catch (err) {
-      console.error("SignalR connection failed:", err);
-      setStatus("disconnected");
     }
-  }, [accessToken, queryClient, setStatus, setLastEvent]);
 
-  useEffect(() => {
-    connect();
+    start();
+
     return () => {
+      cancelled = true;
       disconnectSignalR();
       setStatus("disconnected");
     };
-  }, [connect, setStatus]);
-
-  return connectionRef;
+  }, [accessToken, setStatus]); // Only reconnect when token changes
 }

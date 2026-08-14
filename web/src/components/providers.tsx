@@ -5,10 +5,10 @@ import { getQueryClient } from "@/lib/query-client";
 import { useSignalR } from "@/hooks/use-signalr";
 import { useAuthStore } from "@/stores/auth.store";
 
-function SignalRProvider({ children }: { children: React.ReactNode }) {
+function SignalRConnection() {
   const accessToken = useAuthStore((s) => s.user?.accessToken);
   useSignalR(accessToken);
-  return <>{children}</>;
+  return null;
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -16,7 +16,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SignalRProvider>{children}</SignalRProvider>
+      <SignalRConnection />
+      {children}
     </QueryClientProvider>
   );
 }
