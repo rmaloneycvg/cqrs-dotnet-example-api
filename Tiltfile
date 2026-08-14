@@ -290,6 +290,28 @@ k8s_resource(
     resource_deps=['4-mssql'],
 )
 
+# ─── Storybook (local process, no k8s) ───────────────────────────────────────
+# Runs as a local dev server — not containerized. Uses react-vite framework
+# to avoid Next.js 16 peer dep conflicts with Storybook 8.
+
+local_resource(
+    'storybook',
+    serve_cmd='cd web && npm run storybook',
+    deps=['web/src'],
+    ignore=['web/src/**/*.test.*', 'web/node_modules'],
+    labels=['tooling'],
+    auto_init=False,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    links=[
+        link('http://localhost:6006', 'Storybook'),
+    ],
+    readiness_probe=probe(
+        http_get=http_get_action(port=6006, path='/'),
+        initial_delay_secs=10,
+        period_secs=5,
+    ),
+)
+
 # ─── Telemetry (optional) ────────────────────────────────────────────────────
 
 if enable_telemetry:
@@ -302,7 +324,7 @@ if enable_telemetry:
 # ─── Resource Groups ─────────────────────────────────────────────────────────
 # Tilt UI groups (numbered by startup order):
 #   infra     → 1-namespace, 2-rbac, 3-secrets, 4-mssql, 5-rabbitmq
-#   app       → 6-clinic-api
+#   app       → 6-clinic-api, 6b-signalr-service, 6c-web-app
 #   gateway   → 7-nginx-gateway
-#   tooling   → 8-db-migrate (manual)
+#   tooling   → 8-db-migrate (manual), storybook (manual)
 #   telemetry → (future: otel-collector, jaeger, prometheus, grafana)

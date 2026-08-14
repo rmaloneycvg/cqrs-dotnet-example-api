@@ -8,30 +8,48 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@microsoft/signalr": "8.0.7",
-    "@tanstack/react-query": "5.80.7",
+    "@microsoft/signalr": "^8",
+    "@tanstack/react-query": "^5",
+    "ag-grid-community": "^32",
+    "ag-grid-react": "^32",
+    "clsx": "^2",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "zod": "3.25.64",
-    "zustand": "5.0.5"
+    "tailwind-merge": "^2",
+    "zod": "^3",
+    "zustand": "^5"
+  },
+  "overrides": {
+    "@storybook/addon-actions": {
+      "uuid": "^11.1.1"
+    }
   },
   "devDependencies": {
+    "@hookform/resolvers": "^3",
+    "@storybook/addon-a11y": "^8.6.18",
+    "@storybook/addon-essentials": "^8.6.18",
+    "@storybook/react": "^8.6.18",
+    "@storybook/react-vite": "^8.6.18",
     "@tailwindcss/postcss": "^4",
-    "@testing-library/jest-dom": "6.6.3",
-    "@testing-library/react": "16.3.0",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "4.5.2",
+    "@vitejs/plugin-react": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
-    "jsdom": "26.1.0",
+    "jsdom": "^26",
+    "react-hook-form": "^7",
+    "storybook": "^8.6.18",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "3.2.4"
+    "vitest": "^3"
   }
 }
